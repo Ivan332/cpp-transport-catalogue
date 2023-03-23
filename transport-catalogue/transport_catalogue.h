@@ -57,7 +57,7 @@ namespace transport_catalogue {
 
 	class TransportCatalogue {
 	public:
-		void AddStop(std::string name, geo::Coordinates);
+		void AddStop(const std::string& name, geo::Coordinates);
 
 		void AddBus(std::string name, RouteType route_type,
 			const std::vector<std::string>& stop_names);
