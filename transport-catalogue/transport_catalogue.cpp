@@ -14,7 +14,7 @@ using namespace std;
 namespace transport_catalogue {
 
     // добавить остановку в транспортный справочник
-    void TransportCatalogue::AddStop(string name, geo::Coordinates coordinates) {
+    void TransportCatalogue::AddStop(const string& name, geo::Coordinates coordinates) {
         if (stops_by_name_.count(name) > 0) {
             throw invalid_argument("stop "s + name + " already exists"s);
         }
