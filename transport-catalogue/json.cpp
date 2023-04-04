@@ -1,0 +1,449 @@
+#include "json.h"
+
+#include <algorithm>
+#include <cctype>
+#include <cstdlib>
+#include <limits>
+#include <string_view>
+#include <utility>
+
+using namespace std;
+
+namespace json {
+
+    namespace {
+
+        // Вспомогательный класс для парсинга JSON из потока
+        class NodeParser {
+        public:
+            NodeParser(istream& input) : input_(input) {}
+
+            // Парсит элемент JSON
+            Node LoadNode() {
+                const char c = ExpectChar();
+
+                if (isdigit(c) || c == '+' || c == '-' || c == '.') {
+                    input_.putback(c);
+                    return LoadNumber();
+                }
+
+                switch (c) {
+                case 't':
+                    ExpectStr("rue"sv);
+                    return true;
+                case 'f':
+                    ExpectStr("alse"sv);
+                    return false;
+                case '"':
+                    return LoadString();
+                case 'n':
+                    ExpectStr("ull"sv);
+                    return nullptr;
+                case '[':
+                    return LoadArray();
+                case '{':
+                    return LoadDict();
+                }
+
+                Fail("unexpected character '"s + c + "'"s);
+                return {};
+            }
+
+        private:
+            istream& input_;
+
+            // Проверяет, что из потока можно прочитать один символ, и возвращает его
+            char ExpectChar() {
+                char c = input_.get();
+                if (input_.eof()) {
+                    Fail("reached end of stream"s);
+                }
+                return c;
+            }
+
+            // Проверяет, что дальше в потоке идёт строка `str`
+            void ExpectStr(const string_view str) {
+                for (char expected_char : str) {
+                    char c = ExpectChar();
+                    if (c != expected_char) {
+                        Fail("unexpected character '"s + c + "'"s);
+                    }
+                }
+            }
+
+            Node LoadNumber() {
+                string number_str;
+
+                // Флажок указывает, было ли число записано как double
+                bool double_repr = false;
+
+                // Читаем из потока все символы, которые могут встретиться в записи числа,
+                while (true) {
+                    const char c = input_.get();
+                    if (input_.eof()) {
+                        break;
+                    }
+                    if (isdigit(c)) {
+                        number_str.push_back(c);
+                    }
+                    else {
+                        bool end_of_number = false;
+                        switch (c) {
+                        case '.':
+                        case 'e':
+                        case 'E':
+                            double_repr = true;
+                            number_str.push_back(c);
+                            break;
+                        case '-':
+                        case '+':
+                            number_str.push_back(c);
+                            break;
+                        default:
+                            end_of_number = true;
+                        }
+
+                        // Когда нашли символ, который не может быть частью записи числа, возвращаем его обратно
+                        if (end_of_number) {
+                            input_.putback(c);
+                            break;
+                        }
+                    }
+                }
+                if (number_str.empty()) {
+                    Fail("reached end of stream"s);
+                }
+
+                // Пытаемся превратить все прочитанные символы в число
+                char* endp;
+                const double number = strtod(number_str.c_str(), &endp);
+
+                // Если только часть символов была интерпретирована как число, кидаем ошибку
+                if (static_cast<unsigned>(endp - number_str.c_str()) != number_str.size()) {
+                    Fail("error parsing number");
+                }
+
+                // если в записи числа встретилась точка или экспонента, то это всегда double
+                if (double_repr) {
+                    return number;
+                }
+
+                // здесь мы можем быть уверены, что точки не было, значит число целое.
+                // но если оно не влезает в int, то делаем JSON элемент с типом double
+                if (number > static_cast<double>(numeric_limits<int>::max()) ||
+                    number < static_cast<double>(numeric_limits<int>::min())) {
+                    return number;
+                }
+
+                // число целое, и достаточно маленькое - значит возвращаем int
+                return static_cast<int>(number);
+            }
+
+            // Читает строку из потока
+            Node LoadString() {
+                string result;
+                bool escaping = false;
+                while (true) {
+                    char c = ExpectChar();
+                    if (escaping) {
+                        switch (c) {
+                        case 'r':
+                            c = '\r';
+                            break;
+                        case 'n':
+                            c = '\n';
+                            break;
+                        case 't':
+                            c = '\t';
+                            break;
+                        case 'x':
+                            throw runtime_error("hex escapes are not supported"s);
+                        }
+                        escaping = false;
+                    }
+                    else if (c == '"') {
+                        break;
+                    }
+                    else if (c == '\\') {
+                        escaping = true;
+                        continue;
+                    }
+                    result.push_back(c);
+                }
+                return result;
+            }
+
+            // Читает JSON массив
+            Node LoadArray() {
+                Array result;
+                while (true) {
+                    input_ >> ws;
+
+                    // Проверка массив на пустоту
+                    if (result.empty()) {
+                        char c = ExpectChar();
+                        if (c == ']') {
+                            break;
+                        }
+                        input_.putback(c);
+                    }
+
+                    // Рекурсивно читаем JSON элемент
+                    result.push_back(LoadNode());
+
+                    input_ >> ws;
+                    char c = ExpectChar();
+                    if (c == ']') {
+                        break;
+                    }
+                    if (c != ',') {
+                        Fail("error reading array: expected comma, got '"s + c + "'"s);
+                    }
+                }
+                return result;
+            }
+
+            // Читает JSON словарь
+            Node LoadDict() {
+                Dict result;
+
+                while (true) {
+                    input_ >> ws;
+
+                    // Элементы JSON словаря всегда начинаются с двойной кавычки.
+                    char c = ExpectChar();
+                    if (result.empty() && c == '}') {
+                        break;
+                    }
+                    if (c != '"') {
+                        Fail("error reading dict: expected double quotes, got '"s + c + "'"s);
+                    }
+
+                    // читаем строку-ключ
+                    string key = LoadString().AsString();
+
+                    // после ключа должно идти двоеточие
+                    input_ >> ws;
+                    c = ExpectChar();
+                    if (c != ':') {
+                        Fail("error reading dict: expected colon, got '"s + c + "'"s);
+                    }
+
+                    // рекурсивно читаем JSON-элемент
+                    input_ >> ws;
+                    result.emplace(move(key), LoadNode());
+
+                    input_ >> ws;
+                    c = ExpectChar();
+                    if (c == '}') {
+                        break;
+                    }
+                    if (c != ',') {
+                        Fail("error reading dict: expected comma, got '"s + c + "'"s);
+                    }
+                }
+
+                return result;
+            }
+
+            // Кидает исключение `ParsingError`
+            void Fail(const string& what) {
+                input_.setstate(istream::failbit);
+                throw ParsingError(what);
+            }
+        };
+
+        // Вспомогательная структура для печати в поток варианта со значением JSON элемента
+        struct NodePrinter {
+            ostream& output_;
+
+            void operator()(int value) { output_ << value; }
+            void operator()(double value) { output_ << value; }
+            void operator()(bool value) { output_ << (value ? "true"sv : "false"sv); }
+            void operator()(const string& value) { PrintString(value); }
+            void operator()(nullptr_t) { output_ << "null"sv; }
+            void operator()(const Array& value) {
+                bool first = true;
+                output_.put('[');
+                for (const auto& node : value) {
+                    if (!first) {
+                        output_.put(',');
+                    }
+                    first = false;
+                    node.Print(output_);
+                }
+                output_.put(']');
+            }
+            void operator()(const Dict& value) {
+                bool first = true;
+                output_.put('{');
+                for (const auto& [key, node] : value) {
+                    if (!first) {
+                        output_.put(',');
+                    }
+                    first = false;
+                    PrintString(key);
+                    output_.put(':');
+                    node.Print(output_);
+                }
+                output_.put('}');
+            }
+
+        private:
+            void PrintString(const string& str) {
+                output_.put('"');
+                for (const char c : str) {
+                    switch (c) {
+                    case '\r':
+                        output_ << "\\r"sv;
+                        break;
+                    case '\n':
+                        output_ << "\\n"sv;
+                        break;
+                    case '\\':
+                        output_ << "\\\\"sv;
+                        break;
+                    case '"':
+                        output_ << "\\\""sv;
+                        break;
+                    default:
+                        output_.put(c);
+                    }
+                }
+                output_.put('"');
+            }
+        };
+
+    }  // namespace
+
+    Node::Node(const char* value) : Node(string{ value }) {}
+
+    Node::Node(Value&& val) : Value(move(val)) {}
+
+    bool Node::IsInt() const { return holds_alternative<int>(*this); }
+
+    bool Node::IsDouble() const {
+        return holds_alternative<int>(*this) || holds_alternative<double>(*this);
+    }
+
+    bool Node::IsPureDouble() const { return holds_alternative<double>(*this); }
+
+    bool Node::IsBool() const { return holds_alternative<bool>(*this); }
+
+    bool Node::IsString() const { return holds_alternative<string>(*this); }
+
+    bool Node::IsNull() const { return holds_alternative<nullptr_t>(*this); }
+
+    bool Node::IsArray() const { return holds_alternative<Array>(*this); }
+
+    bool Node::IsMap() const { return holds_alternative<Dict>(*this); }
+
+    int Node::AsInt() const {
+        if (IsInt()) {
+            return get<int>(*this);
+        }
+        throw logic_error("not an int node"s);
+    }
+
+    double Node::AsDouble() const {
+        if (IsInt()) {
+            return static_cast<double>(get<int>(*this));
+        }
+        else if (IsPureDouble()) {
+            return get<double>(*this);
+        }
+        throw logic_error("not a double node"s);
+    }
+
+    bool Node::AsBool() const {
+        if (IsBool()) {
+            return get<bool>(*this);
+        }
+        throw logic_error("not a bool node"s);
+    }
+
+    const string& Node::AsString() const {
+        if (IsString()) {
+            return get<string>(*this);
+        }
+        throw logic_error("not a string node"s);
+    }
+
+    const Array& Node::AsArray() const {
+        if (IsArray()) {
+            return get<Array>(*this);
+        }
+        throw logic_error("not an array node"s);
+    }
+
+    const Dict& Node::AsMap() const {
+        if (IsMap()) {
+            return get<Dict>(*this);
+        }
+        throw logic_error("not a dict node"s);
+    }
+
+    Array& Node::AsArray() {
+        if (IsArray()) {
+            return get<Array>(*this);
+        }
+        throw logic_error("not an array node"s);
+    }
+
+    Dict& Node::AsMap() {
+        if (IsMap()) {
+            return get<Dict>(*this);
+        }
+        throw logic_error("not a dict node"s);
+    }
+
+    void Node::Print(ostream& output) const {
+        visit(NodePrinter{ output }, GetValue());
+    }
+
+    const Node::Value& Node::GetValue() const { return *this; }
+
+    Node::Value& Node::GetValue() { return *this; }
+
+    bool Node::operator==(const Node& other) const {
+        return GetValue() == other.GetValue();
+    }
+
+    bool Node::operator!=(const Node& other) const { return !(*this == other); }
+
+    Document::Document(Node root) : root_(move(root)) {}
+
+    const Node& Document::GetRoot() const { return root_; }
+
+    bool Document::operator==(const Document& other) const {
+        return root_ == other.root_;
+    }
+
+    bool Document::operator!=(const Document& other) const {
+        return !(*this == other);
+    }
+
+    // Парсит JSON документ из потока и проверяет
+    Document Load(istream& input) {
+        istream::sentry sentry{ input };
+        if (!sentry) {
+            if (input.eof()) {
+                throw ParsingError("reached end of stream"s);
+            }
+            throw ParsingError("input stream is in bad state"s);
+        }
+        NodeParser parser{ input };
+        return Document{ parser.LoadNode() };
+    }
+
+    // Печатает JSON документ в поток
+    void Print(const Document& doc, ostream& output) {
+        doc.GetRoot().Print(output);
+    }
+
+}  // namespace json
+
+ostream& operator<<(ostream& out, const json::Node& node) {
+    node.Print(out);
+    return out;
+}
