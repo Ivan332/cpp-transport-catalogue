@@ -10,41 +10,14 @@
 #include <utility>
 
 #include "geo.h"
+#include "domain.h"
 
 namespace transport_catalogue {
-	// тип маршрута (линейный / круговой)
-	enum RouteType {		
-		LINEAR,
-		CIRCULAR,
-	};
-
-	// остановка(название / координаты)
-	struct Stop {
-		std::string name;
-		geo::Coordinates coords;
-	};
-
-	// маршрут(название / тип маршрута / вектор остановок)
-	struct Bus {
-		std::string name;
-		RouteType route_type = RouteType::LINEAR;
-		std::vector<const Stop*> stops;
-	};
-
-	// параметры маршрута
-	struct BusStats {
-		size_t stops_count = 0;
-		size_t unique_stops_count = 0;
-		double route_length = 0;
-		double crow_route_length = 0;
-	};
-
-	using BusesForStop = std::set<std::string_view>;
 
 	namespace detail {
 		// ключ для мапы с расстояниями между остановками
 		using StopDisKey = std::pair<const Stop*, const Stop*>;
-		
+
 		// хешер для `StopDisKey`
 		struct SDKHasher {
 			size_t operator()(const StopDisKey sdk) const {
@@ -66,32 +39,32 @@ namespace transport_catalogue {
 
 		std::optional<BusStats> GetBusStats(std::string_view bus_name) const;
 
-		std::optional<BusesForStop> GetStopInfo(std::string_view stop_name) const;
+		const std::optional<BusesForStop> GetStopInfo(std::string_view stop_name) const;
 
-		//std::vector<const Bus*> GetBuses() const;
+		std::vector<const Bus*> GetBuses() const;
 
-		//std::vector<const Stop*> GetStops() const;
+		std::vector<const Stop*> GetStops() const;
 
-		//double GetRealDistance(const Stop* from, const Stop* to) const;
+		double GetRealDistance(const Stop* from, const Stop* to) const;
 
 	private:
 		// коллекция уникальных остановок
-		std::deque<Stop> stops_;		
+		std::deque<Stop> stops_;
 
 		// мапа <имя остановки> -> <указатель на остановку>
 		std::unordered_map<std::string_view, Stop*> stops_by_name_;
 
 		// коллекция уникальных маршрутов
-		std::deque<Bus> buses_;		
+		std::deque<Bus> buses_;
 
-		// мапа <имя маршрута> -> <указатель на маршрут>
+		// мап <имя маршрута> -> <указатель на маршрут>
 		std::unordered_map<std::string_view, const Bus*> buses_by_name_;
 
-		// мапа с реальным расстоянием между остановками `first` и `second`
+		// мап с реальным расстоянием между остановками `first` и `second`
 		std::unordered_map<detail::StopDisKey, unsigned int, detail::SDKHasher>
 			real_distances_;
 
-		// мапа с набором маршрутов, проходящих через определённую остановку
+		// мап с набором маршрутов, проходящих через определённую остановку
 		std::unordered_map<const Stop*, BusesForStop> buses_for_stop_;
 
 		// вычисление дистанции от `from` до `to` 
