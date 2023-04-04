@@ -73,7 +73,7 @@ namespace transport_catalogue {
         }
         const Bus& bus = *it->second;
         const auto& stops = bus.stops;
-      
+
         unordered_set<const Stop*> uniq_stops{ stops.begin(), stops.end() };
 
         size_t stops_count;
@@ -88,7 +88,7 @@ namespace transport_catalogue {
         switch (bus.route_type) {
         case RouteType::LINEAR:
             stops_count = stops.size() * 2 - 1;
-            
+
             for (size_t i = stops.size() - 1; i >= 1; --i) {
                 auto [real, _] = CalcDistance(stops[i], stops[i - 1]);
                 route_length += real;
@@ -98,7 +98,7 @@ namespace transport_catalogue {
             break;
         case RouteType::CIRCULAR:
             stops_count = stops.size() + 1;
-            
+
             auto [real, crow] = CalcDistance(stops.back(), stops[0]);
             route_length += real;
             crow_route_length += crow;
@@ -109,7 +109,7 @@ namespace transport_catalogue {
     }
 
     // получить информацию об остановке
-    std::optional<BusesForStop> TransportCatalogue::GetStopInfo(
+    const std::optional<BusesForStop> TransportCatalogue::GetStopInfo(
         std::string_view stop_name) const {
         auto stop_it = stops_by_name_.find(stop_name);
         if (stop_it == stops_by_name_.end()) {
@@ -140,6 +140,29 @@ namespace transport_catalogue {
                                    string(to) + " has already been set" };
         }
         real_distances_.emplace(key, distance);
+    }
+
+    // Возвращает вектор с указателями на все маршруты в справочнике
+    vector<const Bus*> TransportCatalogue::GetBuses() const {
+        vector<const Bus*> result;
+        result.reserve(buses_.size());
+        transform(buses_.begin(), buses_.end(), back_inserter(result),
+            [](const Bus& bus) { return &bus; });
+        return result;
+    }
+
+    // Возвращает вектор с указателями на все остановки в справочнике
+    vector<const Stop*> TransportCatalogue::GetStops() const {
+        vector<const Stop*> result;
+        result.reserve(stops_.size());
+        transform(stops_.begin(), stops_.end(), back_inserter(result),
+            [](const Stop& stop) { return &stop; });
+        return result;
+    }
+
+    double TransportCatalogue::GetRealDistance(const Stop* from,
+        const Stop* to) const {
+        return CalcDistance(from, to).first;
     }
 
     // рассчитать расстояние от остановки `from` до `to`
