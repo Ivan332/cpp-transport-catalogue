@@ -9,6 +9,7 @@
 #include "domain.h"
 #include "json.h"
 #include "svg.h"
+#include "json_builder.h"
 
 using namespace std;
 
@@ -43,8 +44,8 @@ namespace json_reader {
 
             return {
                 request.at("name"s).AsString(),
-                request.at("is_roundtrip"s).AsBool() ? transport_catalogue::RouteType::CIRCULAR
-                                                     : transport_catalogue::RouteType::LINEAR,
+                request.at("is_roundtrip"s).AsBool() ? transport_catalogue::RouteType::CIRCULAR 
+                : transport_catalogue::RouteType::LINEAR,
                 move(stop_names),
             };
         }
@@ -109,31 +110,53 @@ namespace json_reader {
             ostream& out;
 
             void operator()(std::monostate) {
-                json::Print(json::Document(json::Dict{ { "request_id"s, request_id },
-                    {"error_message"s, "not found"s} }), out);
+                json::Print(json::Document{
+                    json::Builder{}.StartDict()
+                    .Key("request_id"s).Value(request_id)
+                    .Key("error_message"s).Value("not found"s)
+                    .EndDict()
+                    .Build() }, out);
             }
 
             void operator()(const StopStatResponse& response) {
-                json::Array array_;
+                auto buses = json::Builder{}.StartDict().Key("buses"s).StartArray();
+                set<string_view> sorted_buses;
                 for (const auto& bus_name : response.buses_for_stop) {
-                    array_.push_back(json::Node{ bus_name.data() });
+                    sorted_buses.emplace(bus_name);
+                    //buses.Value(string{ bus_name });
                 }
-                std::sort(array_.begin(), array_.end(), [](const json::Node& lhs, const json::Node& rhs)
-                    {return lhs.AsString() < rhs.AsString(); });
-                json::Print(json::Document(json::Dict{ { "buses"s, array_ }, { "request_id"s, request_id } }), out);
+                for (const auto& bus_name : sorted_buses)
+                {
+                    buses.Value(string{ bus_name });
+                }
+                json::Print(json::Document{ buses.EndArray().Key("request_id"s).Value(request_id)
+                    .EndDict().Build() }, out);
             }
 
             void operator()(const BusStatResponse& response) {
-                const auto& bus_stats = response.bus_stats;
-                json::Print(json::Document(json::Dict{ { "curvature"s, bus_stats.route_length / bus_stats.crow_route_length },
-                    { "request_id"s, request_id }, { "route_length"s, bus_stats.route_length },
-                    { "stop_count"s, static_cast<int>(bus_stats.stops_count) },
-                    { "unique_stop_count"s, static_cast<int>(bus_stats.unique_stops_count) } }), out);
+                const auto& bus_stats = response.bus_stats;                
+                json::Print(json::Document{
+                    json::Builder{}
+                        .StartDict()
+                        .Key("curvature"s).Value(bus_stats.route_length / bus_stats.crow_route_length)
+                        .Key("request_id"s).Value(request_id)
+                        .Key("route_length"s).Value(bus_stats.route_length)
+                        .Key("stop_count"s).Value(static_cast<int>(bus_stats.stops_count))
+                        .Key("unique_stop_count"s).Value(static_cast<int>(bus_stats.unique_stops_count))
+                        .EndDict()
+                        .Build() }, out);
             }
 
             void operator()(const MapResponse& response) {
-                json::Print(json::Document(json::Dict{ { "map"s, response.svg_map }, { "request_id"s, request_id } }), out);
+                json::Print(json::Document{
+                    json::Builder{}
+                        .StartDict()
+                        .Key("map"s).Value(response.svg_map)
+                        .Key("request_id"s).Value(request_id)
+                        .EndDict()
+                        .Build() }, out);
             }
+
         };
 
         // Парсит координату в JSON формате (массив из двух чисел с плавающей точкой)
