@@ -95,7 +95,7 @@ namespace json {
         }
         stack_.push_back(Dict{});
         expect_key_ = true;
-        return { move(*this) };
+        return DictKeyPart{ move(*this) };
     }
 
     // Закончить построение JSON словаря
@@ -130,7 +130,7 @@ namespace json {
             throw logic_error("expected key"s);
         }
         stack_.push_back(Array{});
-        return { move(*this) };
+        return ArrayPart{ move(*this) };
     }
 
     // Закончить построение JSON массива
@@ -171,19 +171,56 @@ namespace json {
         return val;
     }
 
+    // Указать название ключа в собираемом JSON словаре
+    Builder& PartBuilder::Key(std::string string_) {
+        return builder_.Key(std::move(string_));
+    }
+
+    // Указать значение для примитивного JSON или значение собираемого словаря или массива
+    Builder& PartBuilder::Value(Node::Value value_) {
+        return builder_.Value(value_);
+    }
+
     // Начать построение JSON словаря
-    DictKeyPart DictValuePart::StartDict() { return builder_.StartDict(); }
+    DictKeyPart PartBuilder::StartDict() {
+        return builder_.StartDict();
+    }
+
+    // Закончить построение JSON словаря
+    Builder& PartBuilder::EndDict() {
+        return builder_.EndDict();
+    }
+
+    // Начать построение JSON массива
+    ArrayPart PartBuilder::StartArray() {
+        return builder_.StartArray();
+    }
+
+    // Закончить построение JSON массива
+    Builder& PartBuilder::EndArray() {
+        return builder_.EndArray();
+    }
+
+    // Закончить сборку JSON значения, возвращает готовую JSON ноду
+    Node PartBuilder::Build() {
+        return builder_.Build();
+    }
+
+    // Начать построение JSON словаря
+    DictKeyPart DictValuePart::StartDict() { 
+        return builder_.StartDict(); 
+    }
 
     // Указать название ключа в собираемом JSON словаре
     DictValuePart DictKeyPart::Key(std::string k) {
         builder_.Key(move(k));
-        return { move(builder_) };
+        return DictValuePart{ move(builder_) };
     }
 
     // Указать значение в собираемом JSON словаре
     DictKeyPart DictValuePart::Value(Node::Value value) {
         builder_.Value(move(value));
-        return { move(builder_) };
+        return DictKeyPart{ move(builder_) };
     }
 
     // Закончить построение JSON словаря
@@ -193,7 +230,9 @@ namespace json {
     }
 
     // Начать построение JSON массива
-    ArrayPart DictValuePart::StartArray() { return builder_.StartArray(); }
+    ArrayPart DictValuePart::StartArray() { 
+        return builder_.StartArray(); 
+    }
 
     // Указать значение в собираемом JSON массиве
     ArrayPart& ArrayPart::Value(Node::Value value) {
@@ -202,10 +241,14 @@ namespace json {
     }
 
     // Начать построение JSON словаря
-    DictKeyPart ArrayPart::StartDict() { return builder_.StartDict(); }
+    DictKeyPart ArrayPart::StartDict() { 
+        return builder_.StartDict(); 
+    }
 
     // Начать построение JSON массива
-    ArrayPart ArrayPart::StartArray() { return builder_.StartArray(); }
+    ArrayPart ArrayPart::StartArray() { 
+        return builder_.StartArray(); 
+    }
 
     // Закончить построение JSON массива
     Builder ArrayPart::EndArray() {
