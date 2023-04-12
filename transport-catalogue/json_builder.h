@@ -52,7 +52,7 @@ namespace json {
 	// Общий класс для вспомогательных классов - конструкторов частей JSON нод
 	class PartBuilder {
 	protected:
-		PartBuilder(Builder& builder) 
+		PartBuilder(Builder&& builder) 
 			: builder_(std::move(builder)) {
 		}
 		Builder builder_;
@@ -72,8 +72,8 @@ namespace json {
 		using PartBuilder::PartBuilder;
 
 	public:
-		DictKeyPart(Builder& builder)
-			: PartBuilder(builder) {
+		DictKeyPart(Builder&& builder)
+			: PartBuilder(std::move(builder)) {
 		}
 
 		DictKeyPart(const DictKeyPart&) = delete;
@@ -88,8 +88,8 @@ namespace json {
 		using PartBuilder::PartBuilder;
 
 	public:
-		DictValuePart(Builder& builder)
-			: PartBuilder(builder) {
+		DictValuePart(Builder&& builder)
+			: PartBuilder(std::move(builder)) {
 		}
 
 		DictValuePart(const DictValuePart&) = delete;
@@ -106,8 +106,8 @@ namespace json {
 		using PartBuilder::PartBuilder;
 
 	public:
-		ArrayPart(Builder& builder)
-			: PartBuilder(builder) {
+		ArrayPart(Builder&& builder)
+			: PartBuilder(std::move(builder)) {
 		}
 
 		ArrayPart(const ArrayPart&) = delete;
