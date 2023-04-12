@@ -52,12 +52,19 @@ namespace json {
 	// Общий класс для вспомогательных классов - конструкторов частей JSON нод
 	class PartBuilder {
 	protected:
-		PartBuilder(Builder&& builder) : builder_(std::move(builder)) {}
+		PartBuilder(Builder& builder) 
+			: builder_(std::move(builder)) {
+		}
 		Builder builder_;
 
-		friend Builder;
-		friend DictKeyPart;
-		friend DictValuePart;
+		Builder& Key(std::string);
+		Builder& Value(Node::Value);
+		DictKeyPart StartDict();
+		Builder& EndDict();
+		ArrayPart StartArray();
+		Builder& EndArray();
+		Node Build();
+
 	};
 
 	// Часть конструктора JSON ( `Key()` - `Value()` / окончание словаря )
@@ -65,8 +72,9 @@ namespace json {
 		using PartBuilder::PartBuilder;
 
 	public:
-		DictKeyPart(DictKeyPart&&) = default;
-		DictKeyPart& operator=(DictKeyPart&&) = default;
+		DictKeyPart(Builder& builder)
+			: PartBuilder(builder) {
+		}
 
 		DictKeyPart(const DictKeyPart&) = delete;
 		DictKeyPart& operator=(const DictKeyPart&) = delete;
@@ -80,7 +88,9 @@ namespace json {
 		using PartBuilder::PartBuilder;
 
 	public:
-		DictValuePart(DictValuePart&&) = default;
+		DictValuePart(Builder& builder)
+			: PartBuilder(builder) {
+		}
 
 		DictValuePart(const DictValuePart&) = delete;
 		DictValuePart& operator=(const DictValuePart&) = delete;
@@ -96,8 +106,9 @@ namespace json {
 		using PartBuilder::PartBuilder;
 
 	public:
-		ArrayPart(ArrayPart&&) = default;
-		ArrayPart& operator=(ArrayPart&&) = default;
+		ArrayPart(Builder& builder)
+			: PartBuilder(builder) {
+		}
 
 		ArrayPart(const ArrayPart&) = delete;
 		ArrayPart& operator=(const ArrayPart&) = delete;
