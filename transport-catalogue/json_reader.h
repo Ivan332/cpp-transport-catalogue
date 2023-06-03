@@ -2,10 +2,12 @@
 
 #include "request_handler.h"
 #include "map_renderer.h"
+#include "transport_router.h"
 
 namespace json_reader {
 
     using map_renderer::RenderSettings;
+    using transport_catalogue::router::RouterSettings;
 
     class BufferingRequestReader final : public request_handler::AbstractBufferingRequestReader {
     public:
@@ -25,10 +27,16 @@ namespace json_reader {
             return render_settings_;
         }
 
+        // Возвращает настройки отрисовки маршрута
+        virtual const std::optional<RouterSettings>& GetRouterSettings() const override {
+            return router_settings_;
+        }
+
     private:
         std::vector<request_handler::BaseRequest> base_requests_;
         std::vector<request_handler::StatRequest> stat_requests_;
         std::optional<RenderSettings> render_settings_;
+        std::optional<RouterSettings> router_settings_;
 
         void Parse(std::istream&);
     };
