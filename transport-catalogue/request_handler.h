@@ -10,12 +10,14 @@
 #include "domain.h"
 #include "geo.h"
 #include "map_renderer.h"
+#include "transport_router.h"
 
 namespace request_handler {
 
     using namespace transport_catalogue;
     using map_renderer::MapRenderer;
     using map_renderer::RenderSettings;
+    using transport_catalogue::router::RouterSettings;
 
     // Команда на добавление остановки в транспортный справочник
     struct AddStopCmd {
@@ -62,12 +64,17 @@ namespace request_handler {
     // Запрос на получение карты маршрутов в SVG формате
     struct MapRequest : public BaseStatRequest {};
 
+    struct RouteRequest : public BaseStatRequest {
+        std::string from;
+        std::string to;
+    };
+
     // Все возможные типы запросов на наполнеие базы транспортного справочника
     using BaseRequest = std::variant<AddStopCmd, AddBusCmd>;
 
     // Все возможные типы запросов на получение статистики из транспортного справочника
     using StatRequest =
-        std::variant<BusStatRequest, StopStatRequest, MapRequest>;
+        std::variant<BusStatRequest, StopStatRequest, MapRequest, RouteRequest>;
 
     // Базовый класс для получения запросов к транспортному справочнику
     class AbstractBufferingRequestReader {
@@ -80,6 +87,9 @@ namespace request_handler {
 
         // Запрос на получение настроек отрисовки карты
         virtual const std::optional<RenderSettings>& GetRenderSettings() const = 0;
+
+        // Запрос на получение настроек отрисовки маршрута
+        virtual const std::optional<RouterSettings>& GetRouterSettings() const = 0;
 
     protected:
         // Не разрешаем полиморфное владение наследниками этого класса
@@ -103,7 +113,7 @@ namespace request_handler {
 
     // Все возможные типы ответов на запросы на получение статистики
     using StatResponse =
-        std::variant<std::monostate, BusStatResponse, StopStatResponse, MapResponse>;
+        std::variant<std::monostate, BusStatResponse, StopStatResponse, MapResponse, router::RouteResult>;
 
     // Базовый класс для печати ответов на запросы к транспортному справочнику
     class AbstractStatResponsePrinter {
