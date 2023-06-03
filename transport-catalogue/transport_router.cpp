@@ -16,7 +16,7 @@ namespace transport_catalogue::router {
         BuildStopGraph();
     }
 
-    void Router::BuildStopGraph() {
+    /*void Router::BuildStopGraph() {
         unordered_map<const Stop*, graph::VertexId> id_by_stop;
         auto all_stops = transport_catalogue_.GetStops();
         {
@@ -103,6 +103,107 @@ namespace transport_catalogue::router {
         }
 
         router_ = make_unique<graph::Router<double>>(stop_graph_);
+    }*/
+
+    void Router::BuildStopGraph() {
+        unordered_map<const Stop*, graph::VertexId> id_by_stop = AssignIdsToStops();
+        double velocity = CalculateBusVelocity();
+        double wait_time = CalculateBusWaitTime();
+
+        stop_graph_ = graph::DirectedWeightedGraph<double>(id_by_stop.size() * 2);
+
+        AddBusEdges(id_by_stop, velocity);
+        AddWaitEdges(id_by_stop, wait_time);
+
+        router_ = make_unique<graph::Router<double>>(stop_graph_);
+    }
+
+    unordered_map<const Stop*, graph::VertexId> Router::AssignIdsToStops() {
+        unordered_map<const Stop*, graph::VertexId> id_by_stop;
+        auto all_stops = transport_catalogue_.GetStops();
+        graph::VertexId id = 0;
+        for (const Stop* stop : all_stops) {
+            id_by_stop[stop] = id;
+            vertex_by_stop_name_[string_view(stop->name)] = id;
+            id += 2;
+        }
+
+        return id_by_stop;
+    }
+
+    double Router::CalculateBusVelocity() {
+        return settings_.bus_velocity * 1000 / 3600;
+    }
+
+    double Router::CalculateBusWaitTime() {
+        return settings_.bus_wait_time * 60;
+    }
+
+    void Router::AddBusEdges(const unordered_map<const Stop*, graph::VertexId>& id_by_stop, double velocity) {
+        auto buses = transport_catalogue_.GetBuses();
+        for (const Bus* bus : buses) {
+            const auto& stops = bus->stops;
+            if (stops.size() < 2) {
+                continue;
+            }
+            vector<double> part_lens = CalculatePartLengths(stops, false);
+            vector<double> inv_part_lens;
+
+            if (bus->route_type == RouteType::LINEAR) {
+                inv_part_lens = CalculatePartLengths(stops, true);
+            }
+            for (size_t i = 0; i < stops.size() - 1; ++i) {
+                for (size_t j = i + 1; j < stops.size(); ++j) {
+                    AddBusEdge(bus, id_by_stop, stops[i], stops[j], j - i, CalculateRouteLength(part_lens, i, j), velocity);
+                    if (bus->route_type == RouteType::LINEAR) {
+                        AddBusEdge(bus, id_by_stop, stops[j], stops[i], j - i, CalculateRouteLength(inv_part_lens, i, j), velocity);
+                    }
+                }
+            }
+            if (bus->route_type == RouteType::CIRCULAR) {
+                double depot_len = transport_catalogue_.GetRealDistance(stops.back(), stops[0]);
+                for (size_t i = 1; i < stops.size(); ++i) {
+                    AddBusEdge(bus, id_by_stop, stops[i], stops[0], stops.size() - i, CalculateRouteLength(part_lens, i, stops.size() - 1) + depot_len, velocity);
+                }
+            }
+        }
+    }
+
+    vector<double> Router::CalculatePartLengths(const vector<const Stop*>& stops, bool inverse) {
+        vector<double> part_lengths(stops.size() - 1);
+        for (size_t i = 0; i < stops.size() - 1; ++i) {
+            part_lengths[i] = inverse ? transport_catalogue_.GetRealDistance(stops[i + 1], stops[i]) : transport_catalogue_.GetRealDistance(stops[i], stops[i + 1]);
+        }
+        return part_lengths;
+    }
+
+    double Router::CalculateRouteLength(const vector<double>& part_lens, size_t from, size_t to) {
+        double length = 0;
+        for (size_t i = from; i != to; ++i) {
+            length += part_lens[i];
+        }
+        return length;
+    }
+
+    void Router::AddBusEdge(const Bus* bus, const unordered_map<const Stop*, graph::VertexId>& id_by_stop,
+        const Stop* from, const Stop* to, size_t span_len, double route_len, double velocity) {
+        auto v_from = id_by_stop.at(from) + 1;
+        auto v_to = id_by_stop.at(to);
+        auto time = route_len / velocity;
+        auto edge_id = stop_graph_.AddEdge({ v_from, v_to, time });
+        assert(edge_id == edges_.size());
+        edges_.push_back(BusEdge{ bus, span_len });
+    }
+
+    void Router::AddWaitEdges(const unordered_map<const Stop*, graph::VertexId>& id_by_stop, double wait_time) {
+        auto all_stops = transport_catalogue_.GetStops();
+        for (const Stop* stop : all_stops) {
+            auto v_wait = id_by_stop.at(stop);
+            auto v_bus = v_wait + 1;
+            auto edge_id = stop_graph_.AddEdge({ v_wait, v_bus, wait_time });
+            assert(edge_id == edges_.size());
+            edges_.push_back(WaitEdge{ stop });
+        }
     }
 
     optional<RouteResult> Router::CalcRoute(string_view from,
