@@ -72,6 +72,31 @@ namespace transport_catalogue::router {
         std::vector<Edge> edges_;
         std::unordered_map<std::string_view, graph::VertexId> vertex_by_stop_name_;
 
+        // Назначает уникальные идентификаторы остановкам
+        std::unordered_map<const Stop*, graph::VertexId> AssignIdsToStops();
+
+        // Рассчитывает скорость автобуса
+        double CalculateBusVelocity();
+
+        // Рассчитывает время ожидания автобуса
+        double CalculateBusWaitTime();
+
+        // Добавляет в граф пути автобусов
+        void AddBusEdge(const Bus* bus, const std::unordered_map<const Stop*, graph::VertexId>& id_by_stop,
+            const Stop* from, const Stop* to, size_t span_len, double route_len, double velocity);
+
+        // Добавляет граф пути автобусов между остановками
+        void AddBusEdges(const std::unordered_map<const Stop*, graph::VertexId>& id_by_stop, double velocity);
+
+        // Рассчитывает длины отрезков маршрута между остановками
+        std::vector<double> CalculatePartLengths(const std::vector<const Stop*>& stops, bool inverse);
+
+        // Рассчитывает общую длину маршрута между двумя остановками
+        double CalculateRouteLength(const std::vector<double>& part_lens, size_t from, size_t to);
+
+        // Добавляет ребра в граф, представляющие время ожидания автобусов на остановках
+        void AddWaitEdges(const std::unordered_map<const Stop*, graph::VertexId>& id_by_stop, double wait_time);
+
         void BuildStopGraph();
     };
 
