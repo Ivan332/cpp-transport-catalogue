@@ -8,8 +8,8 @@
 
 #include "domain.h"
 #include "json.h"
-#include "svg.h"
 #include "json_builder.h"
+#include "svg.h"
 
 using namespace std;
 
@@ -18,6 +18,7 @@ namespace json_reader {
     namespace detail {
 
         using namespace request_handler;
+        using namespace transport_catalogue::router;
 
         // Парсит команду на добавление остановки 
         AddStopCmd ParseStopCmd(const json::Dict& request) {
@@ -44,8 +45,8 @@ namespace json_reader {
 
             return {
                 request.at("name"s).AsString(),
-                request.at("is_roundtrip"s).AsBool() ? transport_catalogue::RouteType::CIRCULAR 
-                : transport_catalogue::RouteType::LINEAR,
+                request.at("is_roundtrip"s).AsBool() ? RouteType::CIRCULAR
+                                                     : RouteType::LINEAR,
                 move(stop_names),
             };
         }
@@ -80,6 +81,14 @@ namespace json_reader {
             return { request.at("id"s).AsInt(), request.at("name"s).AsString() };
         }
 
+        RouteRequest ParseRouteRequest(const json::Dict& request) {
+            return {
+                request.at("id"s).AsInt(),
+                request.at("from"s).AsString(),
+                request.at("to"s).AsString(),
+            };
+        }
+
         vector<StatRequest> ParseStatRequests(const json::Array& stat_requests) {
             vector<StatRequest> result;
 
@@ -96,13 +105,16 @@ namespace json_reader {
                 else if (type == "Map"s) {
                     result.emplace_back(MapRequest{ request.at("id"s).AsInt() });
                 }
+                else if (type == "Route"s) {
+                    result.emplace_back(ParseRouteRequest(request));
+                }
                 else {
                     throw invalid_argument("Unknown stat request with type '"s + type + "'"s);
                 }
             }
 
             return result;
-        } 
+        }
 
         // Принтер разных вариантов овтетов на запросы статистики
         struct ResponseVariantPrinter {
@@ -110,53 +122,82 @@ namespace json_reader {
             ostream& out;
 
             void operator()(std::monostate) {
-                json::Print(json::Document{
-                    json::Builder{}.StartDict()
-                    .Key("request_id"s).Value(request_id)
-                    .Key("error_message"s).Value("not found"s)
-                    .EndDict()
-                    .Build() }, out);
+                json::Print(json::Document {
+                    StartCommonJsonDict()
+                        .Key("error_message"s).Value("not found"s)
+                        .EndDict().Build()
+                }, out);
             }
 
             void operator()(const StopStatResponse& response) {
-                auto buses = json::Builder{}.StartDict().Key("buses"s).StartArray();
-                set<string_view> sorted_buses;
+                auto buses = StartCommonJsonDict().Key("buses"s).StartArray();
                 for (const auto& bus_name : response.buses_for_stop) {
-                    sorted_buses.emplace(bus_name);
-                    //buses.Value(string{ bus_name });
-                }
-                for (const auto& bus_name : sorted_buses)
-                {
                     buses.Value(string{ bus_name });
                 }
-                json::Print(json::Document{ buses.EndArray().Key("request_id"s).Value(request_id)
-                    .EndDict().Build() }, out);
+                json::Print(json::Document{buses.EndArray().EndDict().Build()}, out);
             }
 
             void operator()(const BusStatResponse& response) {
-                const auto& bus_stats = response.bus_stats;                
-                json::Print(json::Document{
-                    json::Builder{}
-                        .StartDict()
-                        .Key("curvature"s).Value(bus_stats.route_length / bus_stats.crow_route_length)
-                        .Key("request_id"s).Value(request_id)
+                const auto& bus_stats = response.bus_stats;
+                json::Print(json::Document {
+                    StartCommonJsonDict()
+                        .Key("curvature"s)
+                        .Value(bus_stats.route_length / bus_stats.crow_route_length)
                         .Key("route_length"s).Value(bus_stats.route_length)
                         .Key("stop_count"s).Value(static_cast<int>(bus_stats.stops_count))
-                        .Key("unique_stop_count"s).Value(static_cast<int>(bus_stats.unique_stops_count))
-                        .EndDict()
-                        .Build() }, out);
+                        .Key("unique_stop_count"s)
+                        .Value(static_cast<int>(bus_stats.unique_stops_count))
+                        .EndDict().Build()
+                }, out);
             }
 
             void operator()(const MapResponse& response) {
-                json::Print(json::Document{
-                    json::Builder{}
-                        .StartDict()
+                json::Print(json::Document {
+                    StartCommonJsonDict()
                         .Key("map"s).Value(response.svg_map)
-                        .Key("request_id"s).Value(request_id)
-                        .EndDict()
-                        .Build() }, out);
+                        .EndDict().Build()
+                }, out);
             }
 
+            void operator()(const router::RouteResult& route_result) {
+                auto items = StartCommonJsonDict().Key("items"s).StartArray();
+
+                for (const auto& action : route_result.steps) {
+                    items.Value(GetRouteActionJson(action));
+                }
+                json::Print(json::Document{items.EndArray()
+                    .Key("total_time"s)
+                    .Value(route_result.time / 60)
+                    .EndDict()
+                    .Build()},
+                    out);
+            }
+
+            static json::Dict GetRouteActionJson(const router::RouteAction& step) {
+                if (holds_alternative<router::WaitAction>(step)) {
+                    const auto& wait_step = get<router::WaitAction>(step);
+                    return
+                        json::Builder{}.StartDict()
+                        .Key("type"s).Value("Wait"s)
+                        .Key("stop_name"s).Value(string{ wait_step.stop_name })
+                        .Key("time"s).Value(wait_step.time / 60)
+                        .EndDict().Build().AsMap();
+                }
+                else {
+                    const auto& bus_step = get<router::BusAction>(step);
+                    return
+                        json::Builder{}.StartDict()
+                        .Key("type"s).Value("Bus"s)
+                        .Key("bus"s).Value(string{ bus_step.bus_name })
+                        .Key("span_count"s).Value(static_cast<int>(bus_step.stop_count))
+                        .Key("time"s).Value(bus_step.time / 60)
+                        .EndDict().Build().AsMap();
+                }
+            }
+
+            json::DictKeyPart StartCommonJsonDict() {
+                return json::Builder{}.StartDict().Key("request_id"s).Value(request_id);
+            }
         };
 
         // Парсит координату в JSON формате (массив из двух чисел с плавающей точкой)
@@ -176,15 +217,15 @@ namespace json_reader {
             if (node.IsArray()) {
                 const auto& arr = node.AsArray();
                 if (arr.size() == 3) {
-                    return svg::Rgb{ static_cast<unsigned int>(arr[0].AsInt()),
-                                    static_cast<unsigned int>(arr[1].AsInt()),
-                                    static_cast<unsigned int>(arr[2].AsInt()) };
+                    return svg::Rgb{static_cast<unsigned int>(arr[0].AsInt()),
+                        static_cast<unsigned int>(arr[1].AsInt()),
+                        static_cast<unsigned int>(arr[2].AsInt())};
                 }
                 else if (arr.size() == 4) {
-                    return svg::Rgba{ static_cast<unsigned int>(arr[0].AsInt()),
-                                        static_cast<unsigned int>(arr[1].AsInt()),
-                                        static_cast<unsigned int>(arr[2].AsInt()),
-                                        arr[3].AsDouble() };
+                    return svg::Rgba{static_cast<unsigned int>(arr[0].AsInt()),
+                        static_cast<unsigned int>(arr[1].AsInt()),
+                        static_cast<unsigned int>(arr[2].AsInt()),
+                        arr[3].AsDouble()};
                 }
                 throw runtime_error(
                     "Error parsing JSON array as a color. It must have 3 or 4 elements"s);
@@ -213,6 +254,13 @@ namespace json_reader {
             return result;
         }
 
+        RouterSettings ParseRouterSettings(const json::Dict& map) {
+            RouterSettings result;
+            result.bus_velocity = map.at("bus_velocity"s).AsDouble();
+            result.bus_wait_time = map.at("bus_wait_time"s).AsDouble();
+            return result;
+        }
+
     }  // namespace detail
 
     // Парсит запросы к транспортному справочнику в JSON формате
@@ -225,13 +273,17 @@ namespace json_reader {
             detail::ParseStatRequests(root.at("stat_requests"s).AsArray());
         if (root.count("render_settings"s) > 0) {
             render_settings_ =
-            detail::ParseRenderSettings(root.at("render_settings"s).AsMap());
+                detail::ParseRenderSettings(root.at("render_settings"s).AsMap());
+        }
+        if (root.count("routing_settings"s) > 0) {
+            router_settings_ =
+                detail::ParseRouterSettings(root.at("routing_settings"s).AsMap());
         }
     }
 
+    // Выводит в поток результаты запросов
     ResponsePrinter::ResponsePrinter(std::ostream& out) : out_(out) {}
 
-    // Выводит в поток результаты запросов
     void ResponsePrinter::PrintResponse(int request_id,
         const request_handler::StatResponse& response) {
         if (printed_something_) {
@@ -241,7 +293,7 @@ namespace json_reader {
         else {
             Begin();
         }
-        detail::ResponseVariantPrinter printer{ request_id, out_ };
+        detail::ResponseVariantPrinter printer{request_id, out_};
         std::visit(printer, response);
         printed_something_ = true;
     }
@@ -253,9 +305,9 @@ namespace json_reader {
     }
 
     // Вставляет в начало вывода `[` 
-    void ResponsePrinter::Begin() { out_.put('['); out_.put('\n');  }
+    void ResponsePrinter::Begin() { out_.put('['); }
 
     // Вставляет в конец вывода `]` 
-    void ResponsePrinter::End() { out_.put('\n');  out_.put(']'); }
+    void ResponsePrinter::End() { out_.put(']'); }
 
 }  // namespace json_reader
