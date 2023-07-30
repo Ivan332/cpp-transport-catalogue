@@ -1,103 +1,88 @@
 #pragma once
 
-#include <cstddef>
-#include <memory>
-#include <optional>
-#include <string_view>
+#include <deque>
 #include <unordered_map>
-#include <variant>
-#include <vector>
-
-#include "graph.h"
+#include <iostream>
+ 
+#include "transport_catalogue.h"
 #include "router.h"
-
+#include "domain.h"
+ 
 namespace transport_catalogue {
-    struct Stop;
-    struct Bus;
-} /* namespace transport_catalogue */
-
-namespace transport_catalogue {
-    class TransportCatalogue;
-} /* namespace transport_catalogue */
-
-namespace transport_catalogue::router {
-
-    struct RouterSettings {
-        double bus_velocity = 0;
-        double bus_wait_time = 0;
-    };
-
-    struct WaitAction {
-        std::string_view stop_name;
-        double time;
-    };
-
-    struct BusAction {
-        std::string_view bus_name;
-        size_t stop_count;
-        double time;
-    };
-
-    using RouteAction = std::variant<WaitAction, BusAction>;
-
-    struct WaitEdge {
-        const Stop* stop;
-    };
-
-    struct BusEdge {
-        const Bus* bus;
-        size_t span_len;
-    };
-
-    using Edge = std::variant<WaitEdge, BusEdge>;
-
-    struct RouteResult {
-        double time = 0;
-        std::vector<RouteAction> steps;
-    };
-
-    class Router {
-    public:
-        Router(const RouterSettings& settings,
-            const TransportCatalogue& transport_catalogue);
-        std::optional<RouteResult> CalcRoute(std::string_view from,
-            std::string_view to) const;
-
-    private:
-        RouterSettings settings_;
-        const TransportCatalogue& transport_catalogue_;
-        graph::DirectedWeightedGraph<double> stop_graph_;
-        std::unique_ptr<graph::Router<double>> router_;
-
-        std::vector<Edge> edges_;
-        std::unordered_map<std::string_view, graph::VertexId> vertex_by_stop_name_;
-
-        // Назначает уникальные идентификаторы остановкам
-        std::unordered_map<const Stop*, graph::VertexId> AssignIdsToStops();
-
-        // Рассчитывает скорость автобуса
-        double CalculateBusVelocity();
-
-        // Рассчитывает время ожидания автобуса
-        double CalculateBusWaitTime();
-
-        // Добавляет в граф пути автобусов
-        void AddBusEdge(const Bus* bus, const std::unordered_map<const Stop*, graph::VertexId>& id_by_stop,
-            const Stop* from, const Stop* to, size_t span_len, double route_len, double velocity);
-
-        // Добавляет граф пути автобусов между остановками
-        void AddBusEdges(const std::unordered_map<const Stop*, graph::VertexId>& id_by_stop, double velocity);
-
-        // Рассчитывает длины отрезков маршрута между остановками
-        std::vector<double> CalculatePartLengths(const std::vector<const Stop*>& stops, bool inverse);
-
-        // Рассчитывает общую длину маршрута между двумя остановками
-        double CalculateRouteLength(const std::vector<double>& part_lens, size_t from, size_t to);
-
-        // Добавляет ребра в граф, представляющие время ожидания автобусов на остановках
-        void AddWaitEdges(const std::unordered_map<const Stop*, graph::VertexId>& id_by_stop, double wait_time);
-
-        void BuildStopGraph();
-    };
-
-}  // namespace transport_catalogue::router
+namespace detail {
+namespace router {
+ 
+using namespace domain;
+using namespace graph;
+    
+static const uint16_t KILOMETER = 1000;
+static const uint16_t HOUR = 60;    
+ 
+class TransportRouter {
+public:
+    void set_routing_settings(RoutingSettings routing_settings);
+    const RoutingSettings& get_routing_settings() const;
+ 
+    void build_router(TransportCatalogue& transport_catalogue);
+ 
+    const DirectedWeightedGraph<double>& get_graph() const;
+    const Router<double>& get_router() const;
+    const std::variant<StopEdge, BusEdge>& get_edge(EdgeId id) const;
+    
+    std::optional<RouterByStop> get_router_by_stop(Stop* stop) const;
+    std::optional<RouteInfo> get_route_info(VertexId start, VertexId end) const;
+ 
+    const std::unordered_map<Stop*, RouterByStop>& get_stop_to_vertex() const;
+    const std::unordered_map<EdgeId, std::variant<StopEdge, BusEdge>>& get_edge_id_to_edge() const;
+    
+    std::deque<Stop*> get_stops_ptr(TransportCatalogue& transport_catalogue);
+    std::deque<Bus*> get_bus_ptr(TransportCatalogue& transport_catalogue);
+        
+    void add_edge_to_stop();
+    void add_edge_to_bus(TransportCatalogue& transport_catalogue);
+    
+    void set_stops(const std::deque<Stop*>& stops);
+    void set_graph(TransportCatalogue& transport_catalogue);
+ 
+    Edge<double> make_edge_to_bus(Stop* start, Stop* end, const double distance) const;
+ 
+    template <typename Iterator>
+    void parse_bus_to_edges(Iterator first, 
+                            Iterator last,
+                            const TransportCatalogue& transport_catalogue, 
+                            const Bus* bus);
+    
+private:    
+    std::unordered_map<Stop*, RouterByStop> stop_to_router_;
+    std::unordered_map<EdgeId, std::variant<StopEdge, BusEdge>> edge_id_to_edge_;
+    
+    std::unique_ptr<DirectedWeightedGraph<double>> graph_;
+    std::unique_ptr<Router<double>> router_;
+    
+    RoutingSettings routing_settings_;
+};
+ 
+template <typename Iterator>
+void TransportRouter::parse_bus_to_edges(Iterator first, 
+                                         Iterator last,
+                                         const TransportCatalogue& transport_catalogue, 
+                                         const Bus* bus) {
+    
+    for (auto it = first; it != last; ++it) {
+        size_t distance = 0;
+        size_t span = 0;
+ 
+        for (auto it2 = std::next(it); it2 != last; ++it2) {
+            distance += transport_catalogue.get_distance_stop(*prev(it2), *it2);
+            ++span;
+ 
+            EdgeId id = graph_->add_edge(make_edge_to_bus(*it, *it2, distance));
+            
+            edge_id_to_edge_[id] = BusEdge{bus->name, span, graph_->get_edge(id).weight};
+        }
+    }
+}
+ 
+} // namespace router
+} // namespace detail
+} // namespace transport_catalogue
