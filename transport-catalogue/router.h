@@ -26,16 +26,16 @@ public:
         std::vector<EdgeId> edges;
     };
     
-    void build() {
-        initialize_routes_internal_data(graph_);
-        const size_t vertex_count = graph_.get_vertex_count();
+    void Build() {
+        InitializeRoutesInternalData(graph_);
+        const size_t vertex_count = graph_.GetVertexCount();
         
         for (VertexId vertex_through = 0; vertex_through < vertex_count; ++vertex_through) {
-            relax_routes_internal_data_through_vertex(vertex_count, vertex_through);
+            RelaxRoutesInternalDataThroughVertex(vertex_count, vertex_through);
         }
     }
     
-    std::optional<RouteInfo> build_route(VertexId from, VertexId to) const;
+    std::optional<RouteInfo> Build_route(VertexId from, VertexId to) const;
  
 private:
     struct RouteInternalData {
@@ -45,8 +45,8 @@ private:
     
     using RoutesInternalData = std::vector<std::vector<std::optional<RouteInternalData>>>;
  
-    void initialize_routes_internal_data(const Graph& graph) {
-        const size_t vertex_count = graph.get_vertex_count();
+    void InitializeRoutesInternalData(const Graph& graph) {
+        const size_t vertex_count = graph.GetVertexCount();
         
         for (VertexId vertex = 0; vertex < vertex_count; ++vertex) {
             routes_internal_data_[vertex][vertex] = RouteInternalData{ZERO_WEIGHT, std::nullopt};
@@ -66,7 +66,7 @@ private:
         }
     }
  
-    void relax_route(VertexId vertex_from, VertexId vertex_to, 
+    void RelaxRoute(VertexId vertex_from, VertexId vertex_to, 
                      const RouteInternalData& route_from,
                      const RouteInternalData& route_to) {
                      
@@ -79,7 +79,7 @@ private:
         }
     }
  
-    void relax_routes_internal_data_through_vertex(size_t vertex_count, VertexId vertex_through) {
+    void RelaxRoutesInternalDataThroughVertex(size_t vertex_count, VertexId vertex_through) {
     
         for (VertexId vertex_from = 0; vertex_from < vertex_count; ++vertex_from) {
         
@@ -88,7 +88,7 @@ private:
                 for (VertexId vertex_to = 0; vertex_to < vertex_count; ++vertex_to) {
                 
                     if (const auto& route_to = routes_internal_data_[vertex_through][vertex_to]) {
-                        relax_route(vertex_from, vertex_to, *route_from, *route_to);
+                        RelaxRoute(vertex_from, vertex_to, *route_from, *route_to);
                     }
                 }
             }
@@ -102,18 +102,18 @@ private:
  
 template <typename Weight>
 Router<Weight>::Router(const Graph& graph) : graph_(graph)
-                                           , routes_internal_data_(graph.get_vertex_count()
-                                           , std::vector<std::optional<RouteInternalData>>(graph.get_vertex_count())) {
-    initialize_routes_internal_data(graph);
+                                           , routes_internal_data_(graph.GetVertexCount()
+                                           , std::vector<std::optional<RouteInternalData>>(graph.GetVertexCount())) {
+    InitializeRoutesInternalData(graph);
  
-    const size_t vertex_count = graph.get_vertex_count();
+    const size_t vertex_count = graph.GetVertexCount();
     for (VertexId vertex_through = 0; vertex_through < vertex_count; ++vertex_through) {
-        relax_routes_internal_data_through_vertex(vertex_count, vertex_through);
+        RelaxRoutesInternalDataThroughVertex(vertex_count, vertex_through);
     }
 }
  
 template <typename Weight>
-std::optional<typename Router<Weight>::RouteInfo> Router<Weight>::build_route(VertexId from,
+std::optional<typename Router<Weight>::RouteInfo> Router<Weight>::Build_route(VertexId from,
                                                                               VertexId to) const {
     const auto& route_internal_data = routes_internal_data_.at(from).at(to);
     
