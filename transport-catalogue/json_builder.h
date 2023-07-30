@@ -8,7 +8,7 @@
 namespace transport_catalogue {
 namespace detail {
 namespace json {
-namespace builder {
+namespace Builder {
  
 class KeyContext;
 class DictionaryContext;
@@ -16,19 +16,19 @@ class ArrayContext;
  
 class Builder {
 public:
-    Node make_node(const Node::Value& value_);
-    void add_node(const Node& node);
+    Node MakeNode(const Node::Value& Value_);
+    void AddNode(const Node& node);
  
-    KeyContext key(const std::string& key_);
-    Builder& value(const Node::Value& value);
+    KeyContext Key(const std::string& Key_);
+    Builder& Value(const Node::Value& Value);
     
-    DictionaryContext start_dict();
-    Builder& end_dict();
+    DictionaryContext StartDict();
+    Builder& EndDict();
     
-    ArrayContext start_array();
-    Builder& end_array();
+    ArrayContext StartArray();
+    Builder& EndArray();
  
-    Node build();
+    Node Build();
  
 private:
     Node root_;
@@ -37,57 +37,57 @@ private:
  
 class BaseContext {
 public:
-    BaseContext(Builder& builder);
+    BaseContext(Builder& Builder);
  
-    KeyContext key(const std::string& key);
-    Builder& value(const Node::Value& value);
+    KeyContext Key(const std::string& Key);
+    Builder& Value(const Node::Value& Value);
     
-    DictionaryContext start_dict();
-    Builder& end_dict();
+    DictionaryContext StartDict();
+    Builder& EndDict();
     
-    ArrayContext start_array();
-    Builder& end_array();
+    ArrayContext StartArray();
+    Builder& EndArray();
  
 protected:
-    Builder& builder_;
+    Builder& Builder_;
 };
  
 class KeyContext : public BaseContext {
 public:
-    KeyContext(Builder& builder);
+    KeyContext(Builder& Builder);
  
-    KeyContext key(const std::string& key) = delete;
+    KeyContext Key(const std::string& Key) = delete;
  
-    BaseContext end_dict() = delete;
-    BaseContext end_array() = delete;
+    BaseContext EndDict() = delete;
+    BaseContext EndArray() = delete;
  
-    DictionaryContext value(const Node::Value& value);
+    DictionaryContext Value(const Node::Value& Value);
 };
  
 class DictionaryContext : public BaseContext {
 public:
-    DictionaryContext(Builder& builder);
+    DictionaryContext(Builder& Builder);
  
-    DictionaryContext start_dict() = delete;
+    DictionaryContext StartDict() = delete;
  
-    ArrayContext start_array() = delete;
-    Builder& end_array() = delete;
+    ArrayContext StartArray() = delete;
+    Builder& EndArray() = delete;
  
-    Builder& value(const Node::Value& value) = delete;
+    Builder& Value(const Node::Value& Value) = delete;
 };
  
 class ArrayContext : public BaseContext {
 public:
-    ArrayContext(Builder& builder);
+    ArrayContext(Builder& Builder);
  
-    KeyContext key(const std::string& key) = delete;
+    KeyContext Key(const std::string& Key) = delete;
  
-    Builder& end_dict() = delete;
+    Builder& EndDict() = delete;
  
-    ArrayContext value(const Node::Value& value);
+    ArrayContext Value(const Node::Value& Value);
 };
  
-} // namespace builder
+} // namespace Builder
 } // namespace json
 } // namespace detail
 } // namespace transport_catalogue
