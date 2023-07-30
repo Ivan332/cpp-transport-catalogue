@@ -126,7 +126,7 @@ template <typename InputIt>
         }
  
         std::optional<double> height_zoom;
-        if (!is_zero(max_lat_ - min_lat)) {
+        if (!IsZero(max_lat_ - min_lat)) {
             height_zoom = (max_height - 2 * padding) 
                           / (max_lat_ - min_lat);
         }
