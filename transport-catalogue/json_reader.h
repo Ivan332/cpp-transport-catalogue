@@ -1,58 +1,45 @@
 #pragma once
 
-#include "request_handler.h"
+#include "json.h"
+#include "serialization.h"
+#include "transport_catalogue.h"
 #include "map_renderer.h"
 #include "transport_router.h"
-
-namespace json_reader {
-
-    using map_renderer::RenderSettings;
-    using transport_catalogue::router::RouterSettings;
-
-    class BufferingRequestReader final : public request_handler::AbstractBufferingRequestReader {
-    public:
-        // Парсит команды из потока
-        BufferingRequestReader(std::istream& in) { Parse(in); }
-
-        virtual const std::vector<request_handler::BaseRequest>& GetBaseRequests() const override {
-            return base_requests_;
-        }
-
-        virtual const std::vector<request_handler::StatRequest>& GetStatRequests() const override {
-            return stat_requests_;
-        }
-
-        // Возвращает настройки отрисовки карты в SVG формате
-        virtual const std::optional<RenderSettings>& GetRenderSettings() const override {
-            return render_settings_;
-        }
-
-        // Возвращает настройки отрисовки маршрута
-        virtual const std::optional<RouterSettings>& GetRouterSettings() const override {
-            return router_settings_;
-        }
-
-    private:
-        std::vector<request_handler::BaseRequest> base_requests_;
-        std::vector<request_handler::StatRequest> stat_requests_;
-        std::optional<RenderSettings> render_settings_;
-        std::optional<RouterSettings> router_settings_;
-
-        void Parse(std::istream&);
-    };
-
-    class ResponsePrinter final : public request_handler::AbstractStatResponsePrinter {
-    public:
-        ResponsePrinter(std::ostream&);
-        virtual void PrintResponse(int request_id, const request_handler::StatResponse&) override;
-        ~ResponsePrinter();
-
-    private:
-        std::ostream& out_;
-
-        bool printed_something_ = false;
-
-        void Begin();
-        void End();
-    };
-}
+ 
+namespace transport_catalogue {
+namespace detail {
+namespace json {
+    
+class JSONReader{
+public:
+    JSONReader() = default;    
+    JSONReader(Document doc);
+    JSONReader(std::istream& input);
+    
+    void parse_node_base(const Node& root, TransportCatalogue& catalogue);
+    void parse_node_stat(const Node& root, std::vector<StatRequest>& stat_request);
+    void parse_node_render(const Node& node, map_renderer::RenderSettings& render_settings);
+    void parse_node_routing(const Node& node, router::RoutingSettings& route_set);
+    void parse_node_serialization(const Node& node, serialization::SerializationSettings& serialization_set);
+    
+    void parse_node_make_base(TransportCatalogue& catalogue, 
+                              map_renderer::RenderSettings& render_settings, 
+                              router::RoutingSettings& routing_settings,
+                              serialization::SerializationSettings& serialization_settings);
+    
+    void parse_node_process_requests(std::vector<StatRequest>& stat_request,
+                                     serialization::SerializationSettings& serialization_settings);
+    
+    Stop parse_node_stop(Node& node);
+    Bus parse_node_bus(Node& node, TransportCatalogue& catalogue);
+    std::vector<Distance> parse_node_distances(Node& node, TransportCatalogue& catalogue);
+    
+    const Document& get_document() const;
+    
+private:
+    Document document_;
+};
+    
+} // namespace json
+} // namespace detail
+} // namespace transport_catalogue
