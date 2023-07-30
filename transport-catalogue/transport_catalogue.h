@@ -1,79 +1,65 @@
 #pragma once
 
-#include <set>
-#include <string>
-#include <string_view>
-#include <vector>
 #include <deque>
-#include <optional>
+#include <string>
+#include <vector>
+#include <iomanip>
+#include <iostream>
+#include <unordered_set>
 #include <unordered_map>
-#include <utility>
-
-#include "geo.h"
+#include <numeric>
+ 
 #include "domain.h"
-
-namespace transport_catalogue {
-
-	namespace detail {
-		// ключ для мапы с расстояниями между остановками
-		using StopDisKey = std::pair<const Stop*, const Stop*>;
-
-		// хешер для `StopDisKey`
-		struct SDKHasher {
-			size_t operator()(const StopDisKey sdk) const {
-				return reinterpret_cast<size_t>(sdk.first) +
-					reinterpret_cast<size_t>(sdk.second) * 43;
-			}
-		};
-
-	}  // namespace detail
-
-	class TransportCatalogue {
-	public:
-		void AddStop(const std::string& name, geo::Coordinates);
-
-		void AddBus(std::string name, RouteType route_type,
-			const std::vector<std::string>& stop_names);
-
-		void SetDistance(std::string_view from, std::string_view to, size_t distance);
-
-		std::optional<BusStats> GetBusStats(std::string_view bus_name) const;
-
-		const std::optional<BusesForStop> GetStopInfo(std::string_view stop_name) const;
-
-		std::vector<const Bus*> GetBuses() const;
-
-		std::vector<const Stop*> GetStops() const;
-
-		double GetRealDistance(const Stop* from, const Stop* to) const;
-
-	private:
-		// коллекция уникальных остановок
-		std::deque<Stop> stops_;
-
-		// мапа <имя остановки> -> <указатель на остановку>
-		std::unordered_map<std::string_view, Stop*> stops_by_name_;
-
-		// коллекция уникальных маршрутов
-		std::deque<Bus> buses_;
-
-		// мап <имя маршрута> -> <указатель на маршрут>
-		std::unordered_map<std::string_view, const Bus*> buses_by_name_;
-
-		// мап с реальным расстоянием между остановками `first` и `second`
-		std::unordered_map<detail::StopDisKey, unsigned int, detail::SDKHasher>
-			real_distances_;
-
-		// мап с набором маршрутов, проходящих через определённую остановку
-		std::unordered_map<const Stop*, BusesForStop> buses_for_stop_;
-
-		// вычисление дистанции от `from` до `to` 
-		std::pair<double, double> CalcDistance(const Stop* from,
-			const Stop* to) const;
-
-		// переводит вектор с названиями остановок в вектор с указателями на остановку в справочнике
-		std::vector<const Stop*> ResolveStopNames(
-			const std::vector<std::string>& stop_names);
-	};
-
-}
+ 
+using namespace domain;
+ 
+namespace transport_catalogue {   
+ 
+struct DistanceHasher {
+    std::hash<const void*> hasher;
+    
+    std::size_t operator()(const std::pair<const Stop*, const Stop*> pair_stops) const noexcept {
+        auto hash_1 = static_cast<const void*>(pair_stops.first);
+        auto hash_2 = static_cast<const void*>(pair_stops.second);
+        return hasher(hash_1) * 17 + hasher(hash_2);
+    }  
+};
+    
+typedef  std::unordered_map<std::string_view, Stop*> StopMap;
+typedef  std::unordered_map<std::string_view, Bus*> BusMap;
+typedef  std::unordered_map<std::pair<const Stop*, const  Stop*>, int, DistanceHasher> DistanceMap;
+ 
+class TransportCatalogue {
+public:      
+    void add_bus(Bus&& bus);
+    void add_stop(Stop&& stop);
+    void add_distance(const std::vector<Distance>& distances);
+    
+    Bus* get_bus(std::string_view bus_name);
+    Stop* get_stop(std::string_view stop_name);
+    
+    std::deque<Stop> get_stops() const;
+    std::deque<Bus> get_buses() const;
+    
+    BusMap get_busname_to_bus() const;
+    StopMap get_stopname_to_stop() const;
+    
+    std::unordered_set<const Bus*> stop_get_uniq_buses(Stop* stop);    
+    std::unordered_set<const Stop*> get_uniq_stops(Bus* bus);
+    double get_length(Bus* bus);
+    
+    DistanceMap get_distance() const;
+    size_t get_distance_stop(const Stop* start, const Stop* finish) const;
+    size_t get_distance_to_bus(Bus* bus);
+    
+private:    
+    std::deque<Stop> stops;
+    StopMap stopname_to_stop;
+    
+    std::deque<Bus> buses;
+    BusMap busname_to_bus;
+    
+    DistanceMap distance_to_stop;
+};
+    
+} // namespace transport_catalogue
