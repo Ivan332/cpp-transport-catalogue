@@ -31,26 +31,26 @@ typedef  std::unordered_map<std::pair<const Stop*, const  Stop*>, int, DistanceH
  
 class TransportCatalogue {
 public:      
-    void add_bus(Bus&& bus);
-    void add_stop(Stop&& stop);
-    void add_distance(const std::vector<Distance>& distances);
+    void AddBus(Bus&& bus);
+    void AddStop(Stop&& stop);
+    void AddDistance(const std::vector<Distance>& distances);
     
-    Bus* get_bus(std::string_view bus_name);
-    Stop* get_stop(std::string_view stop_name);
+    Bus* GetBus(std::string_view bus_name);
+    Stop* GetStop(std::string_view stop_name);
     
-    std::deque<Stop> get_stops() const;
-    std::deque<Bus> get_buses() const;
+    std::deque<Stop> GetStops() const;
+    std::deque<Bus> GetBuses() const;
     
-    BusMap get_busname_to_bus() const;
-    StopMap get_stopname_to_stop() const;
+    BusMap GetBusNameToBus() const;
+    StopMap GetStopNameToStop() const;
     
-    std::unordered_set<const Bus*> stop_get_uniq_buses(Stop* stop);    
-    std::unordered_set<const Stop*> get_uniq_stops(Bus* bus);
-    double get_length(Bus* bus);
+    std::unordered_set<const Bus*> GetStopUniqBuses(Stop* stop);    
+    std::unordered_set<const Stop*> GetUniqStops(Bus* bus);
+    double GetLength(Bus* bus);
     
-    DistanceMap get_distance() const;
-    size_t get_distance_stop(const Stop* start, const Stop* finish) const;
-    size_t get_distance_to_bus(Bus* bus);
+    DistanceMap GetDistance() const;
+    size_t GetDistanceStop(const Stop* start, const Stop* finish) const;
+    size_t GetDistanceToBus(Bus* bus);
     
 private:    
     std::deque<Stop> stops;
