@@ -120,7 +120,7 @@ template <typename InputIt>
         max_lat_ = top_it->latitude;
  
         std::optional<double> width_zoom;
-        if (!is_zero(max_lon - min_lon_)) {
+        if (!IsZero(max_lon - min_lon_)) {
             width_zoom = (max_width - 2 * padding) 
                          / (max_lon - min_lon_);
         }
