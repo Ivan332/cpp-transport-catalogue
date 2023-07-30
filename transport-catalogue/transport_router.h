@@ -73,10 +73,10 @@ void TransportRouter::ParseBusToEdges(Iterator first,
         size_t span = 0;
  
         for (auto it2 = std::next(it); it2 != last; ++it2) {
-            distance += transport_catalogue.get_distance_stop(*prev(it2), *it2);
+            distance += transport_catalogue.GetDistanceStop(*prev(it2), *it2);
             ++span;
  
-            EdgeId id = graph_->AddEdge(make_edge_to_bus(*it, *it2, distance));
+            EdgeId id = graph_->AddEdge(MakeEdgeToBus(*it, *it2, distance));
             
             edge_id_to_edge_[id] = BusEdge{bus->name, span, graph_->GetEdge(id).weight};
         }
