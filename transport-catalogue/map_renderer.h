@@ -34,7 +34,7 @@ private:
     double max_lat_ = 0;
     double zoom_coeff_ = 0;
     
-    bool is_zero(double value);
+    bool IsZero(double Value);
 };
     
 struct RenderSettings {
@@ -57,31 +57,31 @@ class MapRenderer {
 public:
     MapRenderer(RenderSettings& render_settings);   
     
-    SphereProjector get_sphere_projector(const std::vector<geo::Coordinates>& points) const;
-    void init_sphere_projector(std::vector<geo::Coordinates> points);
+    SphereProjector GetSphereProjector(const std::vector<geo::Coordinates>& points) const;
+    void InitSphereProjector(std::vector<geo::Coordinates> points);
     
-    RenderSettings get_render_settings() const;
-    int get_palette_size() const;
-    svg::Color get_color(int line_number) const;
+    RenderSettings GetRenderSettings() const;
+    int GetPaletteSize() const;
+    svg::Color GetColor(int line_number) const;
         
-    void set_line_properties(svg::Polyline& polyline, int line_number) const; 
+    void SetLineProperties(svg::Polyline& polyline, int line_number) const; 
     
-    void set_route_text_common_properties(svg::Text &text, const std::string& name, svg::Point position) const;
-    void set_route_text_additional_properties(svg::Text& text, const std::string& name, svg::Point position) const;
-    void set_route_text_color_properties(svg::Text& text, const std::string& name, int palette, svg::Point position) const;
+    void SetRouteTextCommonProperties(svg::Text &text, const std::string& name, svg::Point position) const;
+    void SetRouteTextAdditionalProperties(svg::Text& text, const std::string& name, svg::Point position) const;
+    void SetRouteTextColorProperties(svg::Text& text, const std::string& name, int palette, svg::Point position) const;
     
-    void set_stops_circles_properties(svg::Circle& circle, svg::Point position) const;
+    void SetStopsCirclesProperties(svg::Circle& circle, svg::Point position) const;
     
-    void set_stops_text_common_properties(svg::Text& text, const std::string& name, svg::Point position) const;
-    void set_stops_text_additional_properties(svg::Text& text, const std::string& name, svg::Point position) const;
-    void set_stops_text_color_properties(svg::Text& text, const std::string& name, svg::Point position) const;
+    void SetStopsTextCommonProperties(svg::Text& text, const std::string& name, svg::Point position) const;
+    void SetStopsTextAdditionalProperties(svg::Text& text, const std::string& name, svg::Point position) const;
+    void SetStopsTextColorProperties(svg::Text& text, const std::string& name, svg::Point position) const;
     
-    void add_line(std::vector<std::pair<Bus*, int>>& buses_palette);
-    void add_buses_name(std::vector<std::pair<Bus*, int>>& buses_palette);
-    void add_stops_circle(std::vector<Stop*>& stops_name);
-    void add_stops_name(std::vector<Stop*>& stops_name);    
+    void AddLine(std::vector<std::pair<Bus*, int>>& buses_palette);
+    void AddBusesName(std::vector<std::pair<Bus*, int>>& buses_palette);
+    void AddStopsCircle(std::vector<Stop*>& stops_name);
+    void AddStopsName(std::vector<Stop*>& stops_name);    
     
-    void get_stream_map(std::ostream& stream_);
+    void GetStreamMap(std::ostream& stream_);
     
 private:
     SphereProjector sphere_projector;
