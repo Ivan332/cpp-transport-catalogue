@@ -143,8 +143,8 @@ void RequestHandler::ExecuteQueries(TransportCatalogue& catalogue,
     std::vector<Node> result_request;
     TransportRouter transport_router;
     
-    transport_router.set_routing_settings(routing_settings);
-    transport_router.Build_router(catalogue);
+    transport_router.SetRoutingSettings(routing_settings);
+    transport_router.BuildRouter(catalogue);
     
     for (StatRequest req : stat_requests) {
  
@@ -234,8 +234,8 @@ std::optional<RouteInfo> RequestHandler::GetRouteInfo(std::string_view start,
                                                         TransportCatalogue& catalogue, 
                                                         TransportRouter& routing) const {
  
-    return routing.get_route_info(routing.get_router_by_stop(catalogue.GetStop(start))->bus_wait_start, 
-                                  routing.get_router_by_stop(catalogue.GetStop(end))->bus_wait_start);
+    return routing.GetRouteInfo(routing.GetRouterByStop(catalogue.GetStop(start))->bus_wait_start, 
+                                  routing.GetRouterByStop(catalogue.GetStop(end))->bus_wait_start);
 }
  
 std::vector<geo::Coordinates> RequestHandler::GetStopsCoordinates(TransportCatalogue& catalogue_) const {
