@@ -10,7 +10,7 @@ namespace ranges {
 template <typename It>
 class Range {
 public:
-    using ValueType = typename std::iterator_traits<It>::value_type;
+    using ValueType = typename std::iterator_traits<It>::Value_type;
  
     Range(It begin, It end) : begin_(begin)
                             , end_(end) {}
@@ -24,6 +24,7 @@ private:
 };
  
 template <typename C>
-auto as_range(const C& container) {return Range{container.begin(), container.end()};}
- 
+auto AsRange(const C& container) {
+    return Range{container.begin(), container.end()};
+} 
 } // namespace ranges
