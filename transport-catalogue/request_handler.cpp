@@ -7,84 +7,84 @@ struct EdgeInfoGetter {
     Node operator()(const StopEdge& edge_info) {
         using namespace std::literals;
  
-        return Builder{}.start_dict()
-                        .key("type").value("Wait")
-                        .key("stop_name").value(std::string(edge_info.name))
-                        .key("time").value(edge_info.time)
-                        .end_dict()
-                        .build();
+        return transport_catalogue::detail::json::Builder::Builder{}.StartDict()
+                        .Key("type").Value("Wait")
+                        .Key("stop_name").Value(std::string(edge_info.name))
+                        .Key("time").Value(edge_info.time)
+                        .EndDict()
+                        .Build();
     }
  
     Node operator()(const BusEdge& edge_info) {
         using namespace std::literals;
     
-        return Builder{}.start_dict()
-                        .key("type").value("Bus")
-                        .key("bus").value(std::string(edge_info.bus_name))
-                        .key("span_count").value(static_cast<int>(edge_info.span_count))
-                        .key("time").value(edge_info.time)
-                        .end_dict()
-                        .build();
+        return transport_catalogue::detail::json::Builder::Builder{}.StartDict()
+                        .Key("type").Value("Bus")
+                        .Key("bus").Value(std::string(edge_info.bus_name))
+                        .Key("span_count").Value(static_cast<int>(edge_info.span_count))
+                        .Key("time").Value(edge_info.time)
+                        .EndDict()
+                        .Build();
     }
 };
  
-Node RequestHandler::execute_make_node_stop(int id_request, const StopQueryResult& stop_info) {
+Node RequestHandler::ExecuteMakeNodeStop(int id_request, const StopQueryResult& stop_info) {
     Node result;
     Array buses;
-    Builder builder;
+    transport_catalogue::detail::json::Builder::Builder Builder;
  
     std::string str_not_found = "not found";
  
     if (stop_info.not_found) {
-        builder.start_dict()
-               .key("request_id").value(id_request)
-               .key("error_message").value(str_not_found)
-               .end_dict();
+        Builder.StartDict()
+               .Key("request_id").Value(id_request)
+               .Key("error_message").Value(str_not_found)
+               .EndDict();
         
-        result = builder.build();
+        result = Builder.Build();
         
     } else {
-        builder.start_dict()
-               .key("request_id").value(id_request)
-               .key("buses").start_array();
+        Builder.StartDict()
+               .Key("request_id").Value(id_request)
+               .Key("buses").StartArray();
  
         for (std::string bus_name : stop_info.buses_name) {
-            builder.value(bus_name);
+            Builder.Value(bus_name);
         }
  
-        builder.end_array().end_dict();
+        Builder.EndArray().EndDict();
         
-        result = builder.build();
+        result = Builder.Build();
     }
  
     return result;
 }
  
-Node RequestHandler::execute_make_node_bus(int id_request, const BusQueryResult& bus_info) {
+Node RequestHandler::ExecuteMakeNodeBus(int id_request, const BusQueryResult& bus_info) {
     Node result;
     std::string str_not_found = "not found";
  
     if (bus_info.not_found) {
-        result = Builder{}.start_dict()
-                          .key("request_id").value(id_request)
-                          .key("error_message").value(str_not_found)
-                          .end_dict()
-                          .build();
+        result = transport_catalogue::detail::json::Builder::Builder{}.StartDict()
+                          .Key("request_id").Value(id_request)
+                          .Key("error_message").Value(str_not_found)
+                          .EndDict()
+                          .Build();
     } else {
-        result = Builder{}.start_dict()
-                          .key("request_id").value(id_request)
-                          .key("curvature").value(bus_info.curvature)
-                          .key("route_length").value(bus_info.route_length)
-                          .key("stop_count").value(bus_info.stops_on_route)
-                          .key("unique_stop_count").value(bus_info.unique_stops)
-                          .end_dict()
-                          .build();
+        result = transport_catalogue::detail::json::Builder::Builder{}.StartDict()
+                          .Key("request_id").Value(id_request)
+                          .Key("curvature").Value(bus_info.curvature)
+                          .Key("route_length").Value(bus_info.route_length)
+                          .Key("stop_count").Value(bus_info.stops_on_route)
+                          .Key("unique_stop_count").Value(bus_info.unique_stops)
+                          .EndDict()
+                          .Build();
     }
  
     return result;
 }
  
-Node RequestHandler::execute_make_node_map(int id_request, 
+Node RequestHandler::ExecuteMakeNodeMap(int id_request, 
                                            TransportCatalogue& catalogue_, 
                                            RenderSettings render_settings) {
     Node result;
@@ -94,32 +94,32 @@ Node RequestHandler::execute_make_node_map(int id_request,
  
     MapRenderer map_catalogue(render_settings);
     
-    map_catalogue.init_sphere_projector(get_stops_coordinates(catalogue_));
+    map_catalogue.InitSphereProjector(GetStopsCoordinates(catalogue_));
     
-    execute_render_map(map_catalogue, catalogue_);
-    map_catalogue.get_stream_map(map_stream);
+    ExecuteRenderMap(map_catalogue, catalogue_);
+    map_catalogue.GetStreamMap(map_stream);
     map_str = map_stream.str();
  
-    result = Builder{}.start_dict()
-                      .key("request_id").value(id_request)
-                      .key("map").value(map_str)
-                      .end_dict()
-                      .build();
+    result = transport_catalogue::detail::json::Builder::Builder{}.StartDict()
+                      .Key("request_id").Value(id_request)
+                      .Key("map").Value(map_str)
+                      .EndDict()
+                      .Build();
  
     return result;
 }
  
-Node RequestHandler::execute_make_node_route(StatRequest& request, 
+Node RequestHandler::ExecuteMakeNodeRoute(StatRequest& request, 
                                              TransportCatalogue& catalogue, 
                                              TransportRouter& routing) {
-    const auto& route_info = get_route_info(request.from, request.to, catalogue, routing);
+    const auto& route_info = GetRouteInfo(request.from, request.to, catalogue, routing);
  
     if (!route_info) {
-        return Builder{}.start_dict()
-                        .key("request_id").value(request.id)
-                        .key("error_message").value("not found")
-                        .end_dict()
-                        .build();
+        return transport_catalogue::detail::json::Builder::Builder{}.StartDict()
+                        .Key("request_id").Value(request.id)
+                        .Key("error_message").Value("not found")
+                        .EndDict()
+                        .Build();
     }
  
     Array items;
@@ -127,15 +127,15 @@ Node RequestHandler::execute_make_node_route(StatRequest& request,
         items.emplace_back(std::visit(EdgeInfoGetter{}, item));
     }
  
-    return Builder{}.start_dict()
-                    .key("request_id").value(request.id)
-                    .key("total_time").value(route_info->total_time)
-                    .key("items").value(items)
-                    .end_dict()
-                    .build();
+    return transport_catalogue::detail::json::Builder::Builder{}.StartDict()
+                    .Key("request_id").Value(request.id)
+                    .Key("total_time").Value(route_info->total_time)
+                    .Key("items").Value(items)
+                    .EndDict()
+                    .Build();
 }
  
-void RequestHandler::execute_queries(TransportCatalogue& catalogue,
+void RequestHandler::ExecuteQueries(TransportCatalogue& catalogue,
                                      std::vector<StatRequest>& stat_requests,
                                      RenderSettings& render_settings,
                                      RoutingSettings& routing_settings) {
@@ -144,45 +144,45 @@ void RequestHandler::execute_queries(TransportCatalogue& catalogue,
     TransportRouter transport_router;
     
     transport_router.set_routing_settings(routing_settings);
-    transport_router.build_router(catalogue);
+    transport_router.Build_router(catalogue);
     
     for (StatRequest req : stat_requests) {
  
         if (req.type == "Stop") {
-            result_request.push_back(execute_make_node_stop(req.id, stop_query(catalogue, req.name)));
+            result_request.push_back(ExecuteMakeNodeStop(req.id, StopQuery(catalogue, req.name)));
             
         } else if (req.type == "Bus") {
-            result_request.push_back(execute_make_node_bus(req.id, bus_query(catalogue, req.name)));
+            result_request.push_back(ExecuteMakeNodeBus(req.id, BusQuery(catalogue, req.name)));
             
         } else if (req.type == "Map") {
-            result_request.push_back(execute_make_node_map(req.id, catalogue, render_settings));
+            result_request.push_back(ExecuteMakeNodeMap(req.id, catalogue, render_settings));
             
         } else if (req.type == "Route") {
-            result_request.push_back(execute_make_node_route(req, catalogue, transport_router));
+            result_request.push_back(ExecuteMakeNodeRoute(req, catalogue, transport_router));
         }   
     }
  
     doc_out = Document{Node(result_request)};
 }
  
-void RequestHandler::execute_render_map(MapRenderer& map_catalogue, TransportCatalogue& catalogue) const {
+void RequestHandler::ExecuteRenderMap(MapRenderer& map_catalogue, TransportCatalogue& catalogue) const {
     std::vector<std::pair<Bus*, int>> buses_palette;
     std::vector<Stop*> stops_sort;
     int palette_size = 0;
     int palette_index = 0;
  
-    palette_size = map_catalogue.get_palette_size();
+    palette_size = map_catalogue.GetPaletteSize();
     
     if (palette_size == 0) {
         std::cout << "color palette is empty";
         return;
     }
  
-    auto buses = catalogue.get_busname_to_bus();
+    auto buses = catalogue.GetBusNameToBus();
     if (buses.size() > 0) {
  
-        for (std::string_view bus_name : get_sort_buses_names(catalogue)) {
-            Bus* bus_info = catalogue.get_bus(bus_name);
+        for (std::string_view bus_name : GetSortBusesNames(catalogue)) {
+            Bus* bus_info = catalogue.GetBus(bus_name);
  
             if (bus_info) {
                 if (bus_info->stops.size() > 0) {
@@ -197,12 +197,12 @@ void RequestHandler::execute_render_map(MapRenderer& map_catalogue, TransportCat
         }
  
         if (buses_palette.size() > 0) {
-            map_catalogue.add_line(buses_palette);
-            map_catalogue.add_buses_name(buses_palette);
+            map_catalogue.AddLine(buses_palette);
+            map_catalogue.AddBusesName(buses_palette);
         }
     }
  
-    auto stops = catalogue.get_stopname_to_stop();
+    auto stops = catalogue.GetStopNameToStop();
     if (stops.size() > 0) {
         std::vector<std::string_view> stops_name;
  
@@ -216,32 +216,32 @@ void RequestHandler::execute_render_map(MapRenderer& map_catalogue, TransportCat
         std::sort(stops_name.begin(), stops_name.end());
  
         for (std::string_view stop_name : stops_name) {
-            Stop* stop = catalogue.get_stop(stop_name);
+            Stop* stop = catalogue.GetStop(stop_name);
             if (stop) {
                 stops_sort.push_back(stop);
             }
         }
  
         if (stops_sort.size() > 0) {
-            map_catalogue.add_stops_circle(stops_sort);
-            map_catalogue.add_stops_name(stops_sort);
+            map_catalogue.AddStopsCircle(stops_sort);
+            map_catalogue.AddStopsName(stops_sort);
         }
     }
 }
  
-std::optional<RouteInfo> RequestHandler::get_route_info(std::string_view start, 
+std::optional<RouteInfo> RequestHandler::GetRouteInfo(std::string_view start, 
                                                         std::string_view end, 
                                                         TransportCatalogue& catalogue, 
                                                         TransportRouter& routing) const {
  
-    return routing.get_route_info(routing.get_router_by_stop(catalogue.get_stop(start))->bus_wait_start, 
-                                  routing.get_router_by_stop(catalogue.get_stop(end))->bus_wait_start);
+    return routing.get_route_info(routing.get_router_by_stop(catalogue.GetStop(start))->bus_wait_start, 
+                                  routing.get_router_by_stop(catalogue.GetStop(end))->bus_wait_start);
 }
  
-std::vector<geo::Coordinates> RequestHandler::get_stops_coordinates(TransportCatalogue& catalogue_) const {
+std::vector<geo::Coordinates> RequestHandler::GetStopsCoordinates(TransportCatalogue& catalogue_) const {
  
     std::vector<geo::Coordinates> stops_coordinates;
-    auto buses = catalogue_.get_busname_to_bus();
+    auto buses = catalogue_.GetBusNameToBus();
  
     for (auto& [busname, bus] : buses) {
         
@@ -256,10 +256,10 @@ std::vector<geo::Coordinates> RequestHandler::get_stops_coordinates(TransportCat
     return stops_coordinates;
 }
  
-std::vector<std::string_view> RequestHandler::get_sort_buses_names(TransportCatalogue& catalogue_) const {
+std::vector<std::string_view> RequestHandler::GetSortBusesNames(TransportCatalogue& catalogue_) const {
     std::vector<std::string_view> buses_names;
  
-    auto buses = catalogue_.get_busname_to_bus();
+    auto buses = catalogue_.GetBusNameToBus();
     if (buses.size() > 0) {
  
         for (auto& [busname, bus] : buses) {
@@ -275,18 +275,18 @@ std::vector<std::string_view> RequestHandler::get_sort_buses_names(TransportCata
     }
 }
  
-BusQueryResult RequestHandler::bus_query(TransportCatalogue& catalogue, std::string_view bus_name) {
+BusQueryResult RequestHandler::BusQuery(TransportCatalogue& catalogue, std::string_view bus_name) {
     BusQueryResult bus_info;
-    Bus* bus = catalogue.get_bus(bus_name);
+    Bus* bus = catalogue.GetBus(bus_name);
  
     if (bus != nullptr) {
         bus_info.name = bus->name;
         bus_info.not_found = false;
         bus_info.stops_on_route = static_cast<int>(bus->stops.size());
-        bus_info.unique_stops = static_cast<int>(catalogue.get_uniq_stops(bus).size());
+        bus_info.unique_stops = static_cast<int>(catalogue.GetUniqStops(bus).size());
         bus_info.route_length = static_cast<int>(bus->route_length);
-        bus_info.curvature = double(catalogue.get_distance_to_bus(bus)
-                                   /catalogue.get_length(bus));
+        bus_info.curvature = double(catalogue.GetDistanceToBus(bus)
+                                   /catalogue.GetLength(bus));
     } else {
         bus_info.name = bus_name;
         bus_info.not_found = true;
@@ -295,16 +295,16 @@ BusQueryResult RequestHandler::bus_query(TransportCatalogue& catalogue, std::str
     return bus_info;
 }
  
-StopQueryResult RequestHandler::stop_query(TransportCatalogue& catalogue, std::string_view stop_name) {
+StopQueryResult RequestHandler::StopQuery(TransportCatalogue& catalogue, std::string_view stop_name) {
     std::unordered_set<const Bus*> unique_buses;
     StopQueryResult stop_info;
-    Stop* stop = catalogue.get_stop(stop_name);
+    Stop* stop = catalogue.GetStop(stop_name);
  
     if (stop != NULL) {
  
         stop_info.name = stop->name;
         stop_info.not_found = false;
-        unique_buses = catalogue.stop_get_uniq_buses(stop);
+        unique_buses = catalogue.GetStopUniqBuses(stop);
  
         if (unique_buses.size() > 0) {
             
@@ -323,7 +323,7 @@ StopQueryResult RequestHandler::stop_query(TransportCatalogue& catalogue, std::s
     return stop_info;
 }
  
-const Document& RequestHandler::get_document() {
+const Document& RequestHandler::GetDocument() {
     return doc_out;
 }
  
