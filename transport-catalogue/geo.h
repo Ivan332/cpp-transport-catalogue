@@ -6,8 +6,8 @@
 
 namespace geo {
     struct Coordinates {
-        double lat;
-        double lng;
+        double latitude;
+        double longitude;
 
         bool operator==(const Coordinates& other) const;
         bool operator!=(const Coordinates& other) const;
@@ -15,7 +15,7 @@ namespace geo {
 
     inline static const double EARTH_RADIUS = 6371000.0;
 
-    inline double ComputeDistance(Coordinates from, Coordinates to) {
+    inline double compute_distance(Coordinates from, Coordinates to) {
         using namespace std;
         if (from == to) {
             return 0;
@@ -25,4 +25,4 @@ namespace geo {
             + cos(from.lat * dr) * cos(to.lat * dr) * cos(abs(from.lng - to.lng) * dr))
             * EARTH_RADIUS;
     }
-}
+} // namespace geo
