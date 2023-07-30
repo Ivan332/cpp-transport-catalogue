@@ -16,25 +16,25 @@ public:
     JSONReader(Document doc);
     JSONReader(std::istream& input);
     
-    void parse_node_base(const Node& root, TransportCatalogue& catalogue);
-    void parse_node_stat(const Node& root, std::vector<StatRequest>& stat_request);
-    void parse_node_render(const Node& node, map_renderer::RenderSettings& render_settings);
-    void parse_node_routing(const Node& node, router::RoutingSettings& route_set);
-    void parse_node_serialization(const Node& node, serialization::SerializationSettings& serialization_set);
+    void ParseNodeBase(const Node& root, TransportCatalogue& catalogue);
+    void ParseNodeStat(const Node& root, std::vector<StatRequest>& stat_request);
+    void ParseNodeRender(const Node& node, map_renderer::RenderSettings& render_settings);
+    void ParseNodeRouting(const Node& node, router::RoutingSettings& route_set);
+    void ParseNodeSerialization(const Node& node, serialization::SerializationSettings& serialization_set);
     
-    void parse_node_make_base(TransportCatalogue& catalogue, 
+    void ParseNodeMakeBase(TransportCatalogue& catalogue, 
                               map_renderer::RenderSettings& render_settings, 
                               router::RoutingSettings& routing_settings,
                               serialization::SerializationSettings& serialization_settings);
     
-    void parse_node_process_requests(std::vector<StatRequest>& stat_request,
+    void ParseNodeProcessRequests(std::vector<StatRequest>& stat_request,
                                      serialization::SerializationSettings& serialization_settings);
     
-    Stop parse_node_stop(Node& node);
-    Bus parse_node_bus(Node& node, TransportCatalogue& catalogue);
-    std::vector<Distance> parse_node_distances(Node& node, TransportCatalogue& catalogue);
+    Stop ParseNodeStop(Node& node);
+    Bus ParseNodeBus(Node& node, TransportCatalogue& catalogue);
+    std::vector<Distance> ParseNodeDistances(Node& node, TransportCatalogue& catalogue);
     
-    const Document& get_document() const;
+    const Document& GetDocument() const;
     
 private:
     Document document_;
