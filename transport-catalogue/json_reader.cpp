@@ -1,313 +1,381 @@
 #include "json_reader.h"
-
-#include <algorithm>
-#include <map>
-#include <stdexcept>
-#include <string>
-#include <variant>
-
-#include "domain.h"
-#include "json.h"
-#include "json_builder.h"
-#include "svg.h"
-
-using namespace std;
-
-namespace json_reader {
-
-    namespace detail {
-
-        using namespace request_handler;
-        using namespace transport_catalogue::router;
-
-        // Парсит команду на добавление остановки 
-        AddStopCmd ParseStopCmd(const json::Dict& request) {
-            vector<AddStopCmd::Distance> distances;
-
-            for (const auto& [stop_name, node] : request.at("road_distances"s).AsMap()) {
-                distances.emplace_back(stop_name, node.AsInt());
-            }
-
-            return {
-                request.at("name"s).AsString(),
-                {request.at("latitude"s).AsDouble(), request.at("longitude"s).AsDouble()},
-                move(distances),
-            };
-        }
-
-        // Парсит команду на добавление маршрута
-        AddBusCmd ParseBusCmd(const json::Dict& request) {
-            vector<string> stop_names;
-
-            for (const auto& node : request.at("stops"s).AsArray()) {
-                stop_names.emplace_back(node.AsString());
-            }
-
-            return {
-                request.at("name"s).AsString(),
-                request.at("is_roundtrip"s).AsBool() ? RouteType::CIRCULAR
-                                                     : RouteType::LINEAR,
-                move(stop_names),
-            };
-        }
-
-        // Парсит базу запросов 
-        vector<BaseRequest> ParseBaseRequests(const json::Array& base_requests) {
-            vector<BaseRequest> result;
-
-            for (const auto& node : base_requests) {
-                const auto& request = node.AsMap();
-                const auto& type = request.at("type"s).AsString();
-
-                if (type == "Stop"s) {
-                    result.emplace_back(ParseStopCmd(request));
-                }
-                else if (type == "Bus"s) {
-                    result.emplace_back(ParseBusCmd(request));
-                }
-                else {
-                    throw invalid_argument("Unknown base request with type '"s + type + "'"s);
-                }
-            }
-
-            return result;
-        }
-
-        StopStatRequest ParseStopStatRequest(const json::Dict& request) {
-            return { request.at("id"s).AsInt(), request.at("name"s).AsString() };
-        }
-
-        BusStatRequest ParseBusStatRequest(const json::Dict& request) {
-            return { request.at("id"s).AsInt(), request.at("name"s).AsString() };
-        }
-
-        RouteRequest ParseRouteRequest(const json::Dict& request) {
-            return {
-                request.at("id"s).AsInt(),
-                request.at("from"s).AsString(),
-                request.at("to"s).AsString(),
-            };
-        }
-
-        vector<StatRequest> ParseStatRequests(const json::Array& stat_requests) {
-            vector<StatRequest> result;
-
-            for (const auto& node : stat_requests) {
-                const auto& request = node.AsMap();
-                const auto& type = request.at("type"s).AsString();
-
-                if (type == "Stop"s) {
-                    result.emplace_back(ParseStopStatRequest(request));
-                }
-                else if (type == "Bus"s) {
-                    result.emplace_back(ParseBusStatRequest(request));
-                }
-                else if (type == "Map"s) {
-                    result.emplace_back(MapRequest{ request.at("id"s).AsInt() });
-                }
-                else if (type == "Route"s) {
-                    result.emplace_back(ParseRouteRequest(request));
-                }
-                else {
-                    throw invalid_argument("Unknown stat request with type '"s + type + "'"s);
-                }
-            }
-
-            return result;
-        }
-
-        // Принтер разных вариантов овтетов на запросы статистики
-        struct ResponseVariantPrinter {
-            int request_id;
-            ostream& out;
-
-            void operator()(std::monostate) {
-                json::Print(json::Document {
-                    StartCommonJsonDict()
-                        .Key("error_message"s).Value("not found"s)
-                        .EndDict().Build()
-                }, out);
-            }
-
-            void operator()(const StopStatResponse& response) {
-                auto buses = StartCommonJsonDict().Key("buses"s).StartArray();
-                for (const auto& bus_name : response.buses_for_stop) {
-                    buses.Value(string{ bus_name });
-                }
-                json::Print(json::Document{buses.EndArray().EndDict().Build()}, out);
-            }
-
-            void operator()(const BusStatResponse& response) {
-                const auto& bus_stats = response.bus_stats;
-                json::Print(json::Document {
-                    StartCommonJsonDict()
-                        .Key("curvature"s)
-                        .Value(bus_stats.route_length / bus_stats.crow_route_length)
-                        .Key("route_length"s).Value(bus_stats.route_length)
-                        .Key("stop_count"s).Value(static_cast<int>(bus_stats.stops_count))
-                        .Key("unique_stop_count"s)
-                        .Value(static_cast<int>(bus_stats.unique_stops_count))
-                        .EndDict().Build()
-                }, out);
-            }
-
-            void operator()(const MapResponse& response) {
-                json::Print(json::Document {
-                    StartCommonJsonDict()
-                        .Key("map"s).Value(response.svg_map)
-                        .EndDict().Build()
-                }, out);
-            }
-
-            void operator()(const router::RouteResult& route_result) {
-                auto items = StartCommonJsonDict().Key("items"s).StartArray();
-
-                for (const auto& action : route_result.steps) {
-                    items.Value(GetRouteActionJson(action));
-                }
-                json::Print(json::Document{items.EndArray()
-                    .Key("total_time"s)
-                    .Value(route_result.time / 60)
-                    .EndDict()
-                    .Build()},
-                    out);
-            }
-
-            static json::Dict GetRouteActionJson(const router::RouteAction& step) {
-                if (holds_alternative<router::WaitAction>(step)) {
-                    const auto& wait_step = get<router::WaitAction>(step);
-                    return
-                        json::Builder{}.StartDict()
-                        .Key("type"s).Value("Wait"s)
-                        .Key("stop_name"s).Value(string{ wait_step.stop_name })
-                        .Key("time"s).Value(wait_step.time / 60)
-                        .EndDict().Build().AsMap();
-                }
-                else {
-                    const auto& bus_step = get<router::BusAction>(step);
-                    return
-                        json::Builder{}.StartDict()
-                        .Key("type"s).Value("Bus"s)
-                        .Key("bus"s).Value(string{ bus_step.bus_name })
-                        .Key("span_count"s).Value(static_cast<int>(bus_step.stop_count))
-                        .Key("time"s).Value(bus_step.time / 60)
-                        .EndDict().Build().AsMap();
-                }
-            }
-
-            json::DictKeyPart StartCommonJsonDict() {
-                return json::Builder{}.StartDict().Key("request_id"s).Value(request_id);
-            }
-        };
-
-        // Парсит координату в JSON формате (массив из двух чисел с плавающей точкой)
-        svg::Point ParsePoint(const json::Array& arr) {
-            if (arr.size() == 2) {
-                return { arr[0].AsDouble(), arr[1].AsDouble() };
-            }
-            throw runtime_error(
-                "Error parsing JSON array as an SVG point. It must have 2 elements"s);
-        }
-
-        // Парсит SVG цвет в JSON формате
-        svg::Color ParseColor(const json::Node& node) {
-            if (node.IsString()) {
-                return node.AsString();
-            }
-            if (node.IsArray()) {
-                const auto& arr = node.AsArray();
-                if (arr.size() == 3) {
-                    return svg::Rgb{static_cast<unsigned int>(arr[0].AsInt()),
-                        static_cast<unsigned int>(arr[1].AsInt()),
-                        static_cast<unsigned int>(arr[2].AsInt())};
-                }
-                else if (arr.size() == 4) {
-                    return svg::Rgba{static_cast<unsigned int>(arr[0].AsInt()),
-                        static_cast<unsigned int>(arr[1].AsInt()),
-                        static_cast<unsigned int>(arr[2].AsInt()),
-                        arr[3].AsDouble()};
-                }
-                throw runtime_error(
-                    "Error parsing JSON array as a color. It must have 3 or 4 elements"s);
-            }
-            throw runtime_error(
-                "Error parsing JSON node as color. It can be an array or a string"s);
-        }
-
-        // Парсит настройки отрисовки карты в SVG формате
-        RenderSettings ParseRenderSettings(const json::Dict& rs) {
-            RenderSettings result;
-            result.bus_label_font_size = rs.at("bus_label_font_size"s).AsInt();
-            result.bus_label_offset = ParsePoint(rs.at("bus_label_offset"s).AsArray());
-            for (const auto& node : rs.at("color_palette"s).AsArray()) {
-                result.color_palette.emplace_back(ParseColor(node));
-            }
-            result.height = rs.at("height"s).AsDouble();
-            result.line_width = rs.at("line_width"s).AsDouble();
-            result.padding = rs.at("padding"s).AsDouble();
-            result.stop_label_font_size = rs.at("stop_label_font_size"s).AsInt();
-            result.stop_label_offset = ParsePoint(rs.at("stop_label_offset"s).AsArray());
-            result.stop_radius = rs.at("stop_radius"s).AsDouble();
-            result.underlayer_color = ParseColor(rs.at("underlayer_color"s));
-            result.underlayer_width = rs.at("underlayer_width"s).AsDouble();
-            result.width = rs.at("width"s).AsDouble();
-            return result;
-        }
-
-        RouterSettings ParseRouterSettings(const json::Dict& map) {
-            RouterSettings result;
-            result.bus_velocity = map.at("bus_velocity"s).AsDouble();
-            result.bus_wait_time = map.at("bus_wait_time"s).AsDouble();
-            return result;
-        }
-
-    }  // namespace detail
-
-    // Парсит запросы к транспортному справочнику в JSON формате
-    void BufferingRequestReader::Parse(istream& sin) {
-        const auto document = json::Load(sin);
-        const auto& root = document.GetRoot().AsMap();
-        base_requests_ =
-            detail::ParseBaseRequests(root.at("base_requests"s).AsArray());
-        stat_requests_ =
-            detail::ParseStatRequests(root.at("stat_requests"s).AsArray());
-        if (root.count("render_settings"s) > 0) {
-            render_settings_ =
-                detail::ParseRenderSettings(root.at("render_settings"s).AsMap());
-        }
-        if (root.count("routing_settings"s) > 0) {
-            router_settings_ =
-                detail::ParseRouterSettings(root.at("routing_settings"s).AsMap());
-        }
+ 
+namespace transport_catalogue {
+namespace detail {
+namespace json {
+    
+JSONReader::JSONReader(Document doc) 
+    : document_(std::move(doc)) {
     }
 
-    // Выводит в поток результаты запросов
-    ResponsePrinter::ResponsePrinter(std::ostream& out) : out_(out) {}
-
-    void ResponsePrinter::PrintResponse(int request_id,
-        const request_handler::StatResponse& response) {
-        if (printed_something_) {
-            out_.put(',');
-            out_.put('\n');
-        }
-        else {
-            Begin();
-        }
-        detail::ResponseVariantPrinter printer{request_id, out_};
-        std::visit(printer, response);
-        printed_something_ = true;
+JSONReader::JSONReader(std::istream& input) 
+    : document_(json::load(input)) {
+    }    
+    
+Stop JSONReader::parse_node_stop(Node& node) {
+    Stop stop;
+    Dict stop_node;
+    
+    if (node.is_dict()) {
+        stop_node = node.as_dict();
+        stop.name = stop_node.at("name").as_string();
+        stop.latitude = stop_node.at("latitude").as_double();
+        stop.longitude = stop_node.at("longitude").as_double();
     }
-
-    ResponsePrinter::~ResponsePrinter() {
-        if (printed_something_) {
-            End();
-        }
+    
+    return stop;
+}
+    
+std::vector<Distance> JSONReader::parse_node_distances(Node& node, TransportCatalogue& catalogue) {
+    std::vector<Distance> distances;
+    Dict stop_node;
+    Dict stop_road_map;
+    std::string begin_name;
+    std::string last_name;
+    int distance;
+    
+    if (node.is_dict()) {
+        stop_node = node.as_dict();
+        begin_name = stop_node.at("name").as_string();
+        
+        try {
+            stop_road_map = stop_node.at("road_distances").as_dict();
+            
+            for (auto [key, value] : stop_road_map) {
+                last_name = key;
+                distance = value.as_int();
+                distances.push_back({catalogue.get_stop(begin_name), 
+                                     catalogue.get_stop(last_name), distance});
+            } 
+            
+        } catch(...) {
+            std::cout << "invalide road" << std::endl;
+        }        
     }
-
-    // Вставляет в начало вывода `[` 
-    void ResponsePrinter::Begin() { out_.put('['); }
-
-    // Вставляет в конец вывода `]` 
-    void ResponsePrinter::End() { out_.put(']'); }
-
-}  // namespace json_reader
+    
+    return distances;
+}
+ 
+Bus JSONReader::parse_node_bus(Node& node, TransportCatalogue& catalogue) {
+    Bus bus;
+    Dict bus_node;
+    Array bus_stops;
+    
+    if (node.is_dict()) {
+        bus_node = node.as_dict();
+        bus.name = bus_node.at("name").as_string();
+        bus.is_roundtrip = bus_node.at("is_roundtrip").as_bool();
+ 
+        try {
+            bus_stops = bus_node.at("stops").as_array();
+            
+            for (Node stop : bus_stops) {
+                bus.stops.push_back(catalogue.get_stop(stop.as_string()));
+            }
+ 
+            if (!bus.is_roundtrip) {
+                size_t size = bus.stops.size() - 1;
+                
+                for (size_t i = size; i > 0; i--) {
+                    bus.stops.push_back(bus.stops[i-1]);
+                }
+                
+            } 
+            
+        } catch(...) {
+            std::cout << "base_requests: bus: stops is empty" << std::endl;
+        }        
+    }
+    
+    return bus;
+}
+    
+void JSONReader::parse_node_base(const Node& root, TransportCatalogue& catalogue){
+    Array base_requests;
+    Dict req_map;
+    Node req_node;
+    
+    std::vector<Node> buses;
+    std::vector<Node> stops;
+    
+    if (root.is_array()) {
+        base_requests = root.as_array();
+        
+        for (Node& node : base_requests) {            
+            if (node.is_dict()) {
+                req_map = node.as_dict();
+                
+                try {
+                    req_node = req_map.at("type");
+                    
+                    if (req_node.is_string()) {
+                        
+                        if (req_node.as_string() == "Bus") {
+                            buses.push_back(req_map);
+                        } else if (req_node.as_string() == "Stop") {
+                            stops.push_back(req_map);
+                        } else {
+                            std::cout << "base_requests are invalid";
+                        }
+                    }
+                    
+                } catch(...) {
+                    std::cout << "base_requests does not have type value";
+                }                
+            }
+        }   
+        
+        for (auto stop : stops) {
+            catalogue.add_stop(parse_node_stop(stop));
+        }
+        
+        for (auto stop : stops) {
+            catalogue.add_distance(parse_node_distances(stop, catalogue));
+        }
+        
+        for (auto bus : buses) {
+            catalogue.add_bus(parse_node_bus(bus, catalogue));
+        }
+        
+    } else {
+        std::cout << "base_requests is not an array";
+    }  
+}
+ 
+void JSONReader::parse_node_stat(const Node& node, std::vector<StatRequest>& stat_request){
+    Array stat_requests;
+    Dict req_map;
+    StatRequest req;
+    
+    if (node.is_array()) {
+        stat_requests = node.as_array();
+        
+        for (Node req_node : stat_requests) {
+            
+            if (req_node.is_dict()) {
+                req_map = req_node.as_dict();
+                req.id = req_map.at("id").as_int();
+                req.type = req_map.at("type").as_string();               
+ 
+                if ((req.type == "Bus") || (req.type == "Stop")) {
+                    req.name = req_map.at("name").as_string();
+                    req.from ="";
+                    req.to = "";
+                    
+                } else {
+                    req.name = "";
+                    if (req.type == "Route") {
+                        req.from = req_map.at("from").as_string();
+                        req.to = req_map.at("to").as_string();
+                        
+                    } else {
+                        req.from ="";
+                        req.to = "";
+                    }
+                }
+                
+                stat_request.push_back(req);                
+            }   
+        } 
+        
+    } else {
+        std::cout << "stat_requests is not array";
+    }
+}
+  
+void JSONReader::parse_node_render(const Node& node, map_renderer::RenderSettings& rend_set){
+    Dict rend_map;
+    Array bus_lab_offset;
+    Array stop_lab_offset;
+    Array arr_color;
+    Array arr_palette;
+    uint8_t red_;
+    uint8_t green_;
+    uint8_t blue_;
+    double opacity_;
+ 
+    if (node.is_dict()) {
+        rend_map = node.as_dict();
+        
+        try {
+            rend_set.width_ = rend_map.at("width").as_double();
+            rend_set.height_ = rend_map.at("height").as_double();
+            rend_set.padding_ = rend_map.at("padding").as_double();
+            rend_set.line_width_ = rend_map.at("line_width").as_double();
+            rend_set.stop_radius_ = rend_map.at("stop_radius").as_double();
+            
+            rend_set.bus_label_font_size_ = rend_map.at("bus_label_font_size").as_int();
+            
+            if (rend_map.at("bus_label_offset").is_array()) {
+                bus_lab_offset = rend_map.at("bus_label_offset").as_array();
+                rend_set.bus_label_offset_ = std::make_pair(bus_lab_offset[0].as_double(),
+                                                            bus_lab_offset[1].as_double());
+            }
+            
+            rend_set.stop_label_font_size_ = rend_map.at("stop_label_font_size").as_int();
+ 
+            if (rend_map.at("stop_label_offset").is_array()) {
+                stop_lab_offset = rend_map.at("stop_label_offset").as_array();
+                rend_set.stop_label_offset_ = std::make_pair(stop_lab_offset[0].as_double(),
+                                                             stop_lab_offset[1].as_double());
+            }
+            
+            if (rend_map.at("underlayer_color").is_string()) {
+                rend_set.underlayer_color_ = svg::Color(rend_map.at("underlayer_color").as_string());
+            } else if (rend_map.at("underlayer_color").is_array()) {
+                arr_color = rend_map.at("underlayer_color").as_array();
+                red_ = arr_color[0].as_int();
+                green_ = arr_color[1].as_int();
+                blue_ = arr_color[2].as_int();
+ 
+                if(arr_color.size() == 4){
+                    opacity_ = arr_color[3].as_double();
+                    rend_set.underlayer_color_ = svg::Color(svg::Rgba(red_, 
+                                                                      green_, 
+                                                                      blue_, 
+                                                                      opacity_));
+                } else if (arr_color.size() == 3) {
+                    rend_set.underlayer_color_ = svg::Color(svg::Rgb(red_, 
+                                                                     green_, 
+                                                                     blue_));
+                }
+                
+            }
+ 
+            rend_set.underlayer_width_ = rend_map.at("underlayer_width").as_double();
+ 
+            if (rend_map.at("color_palette").is_array()) {
+                arr_palette = rend_map.at("color_palette").as_array();
+                
+                for (Node color_palette : arr_palette) {
+                    
+                    if (color_palette.is_string()) {
+                        rend_set.color_palette_.push_back(svg::Color(color_palette.as_string()));
+                    } else if (color_palette.is_array()) {
+                        arr_color = color_palette.as_array();
+                        red_ = arr_color[0].as_int();
+                        green_ = arr_color[1].as_int();
+                        blue_ = arr_color[2].as_int();
+ 
+                        if (arr_color.size() == 4) {
+                            opacity_ = arr_color[3].as_double();
+                            rend_set.color_palette_.push_back(svg::Color(svg::Rgba(red_, 
+                                                                                   green_, 
+                                                                                   blue_, 
+                                                                                   opacity_)));
+                        } else if (arr_color.size() == 3) {
+                            rend_set.color_palette_.push_back(svg::Color(svg::Rgb(red_, 
+                                                                                  green_, 
+                                                                                  blue_)));
+                        }
+                    }
+                }
+            }            
+        } catch(...) {
+            std::cout << "unable to parsse init settings";
+        }
+        
+    } else {
+        std::cout << "render_settings is not map";
+    }
+}
+    
+void JSONReader::parse_node_routing(const Node& node, router::RoutingSettings& route_set) {
+    Dict route;
+    
+    if (node.is_dict()) {
+        route = node.as_dict();
+ 
+        try {
+ 
+            route_set.bus_wait_time = route.at("bus_wait_time").as_double();
+            route_set.bus_velocity = route.at("bus_velocity").as_double();
+            
+        } catch(...) {
+            std::cout << "unable to parse routing settings";
+        }
+        
+    } else {
+        std::cout << "routing settings is not map";
+    }
+ 
+}
+    
+void JSONReader::parse_node_serialization(const Node& node, serialization::SerializationSettings& serialization_set) {
+    
+    Dict serialization;
+ 
+    if (node.is_dict()) {
+        serialization = node.as_dict();
+ 
+        try {
+            serialization_set.file_name = serialization.at("file").as_string();
+ 
+        } catch(...) {
+            std::cout << "unable to parse serialization settings";
+        }
+ 
+    } else {
+        std::cout << "serialization settings is not map";
+    }
+}
+    
+void JSONReader::parse_node_make_base(TransportCatalogue& catalogue, 
+                                      map_renderer::RenderSettings& render_settings, 
+                                      router::RoutingSettings& routing_settings,
+                                      serialization::SerializationSettings& serialization_settings) { 
+    Dict root_dictionary;
+    
+    if (document_.get_root().is_dict()) {
+        root_dictionary = document_.get_root().as_dict();
+        
+        try {          
+            parse_node_base(root_dictionary.at("base_requests"), catalogue);
+            
+        } catch(...) {}   
+        
+        try {
+            parse_node_render(root_dictionary.at("render_settings"), render_settings);
+            
+        } catch(...) {}
+        
+        try {
+            parse_node_routing(root_dictionary.at("routing_settings"), routing_settings);
+            
+        } catch(...) {}
+        
+        try {
+            parse_node_serialization(root_dictionary.at("serialization_settings"), serialization_settings);
+            
+        } catch(...) {}
+        
+    } else {
+        std::cout << "root is not map";
+    }
+}
+    
+void JSONReader::parse_node_process_requests(std::vector<StatRequest>& stat_request,
+                                             serialization::SerializationSettings& serialization_settings) { 
+    Dict root_dictionary;
+ 
+    if (document_.get_root().is_dict()) {
+        root_dictionary = document_.get_root().as_dict();
+ 
+        try {
+            parse_node_stat(root_dictionary.at("stat_requests"), stat_request);
+            
+        } catch(...) {}
+ 
+        try {
+            parse_node_serialization(root_dictionary.at("serialization_settings"), serialization_settings);
+            
+        } catch(...) {}
+ 
+    } else {
+        std::cout << "root is not map";
+    }
+}
+    
+} // namespace json
+} // namespace detail
+} // namespace transport_catalogue
