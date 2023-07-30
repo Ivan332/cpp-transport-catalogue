@@ -13,30 +13,30 @@ Rgba::Rgba(uint8_t red, uint8_t green, uint8_t blue, double opacity) : red_(red)
                                                                      , blue_(blue)
                                                                      , opacity_(opacity) {}
     
-inline void print_color(std::ostream& out, Rgb& rgb) {
+inline void PrintColor(std::ostream& out, Rgb& rgb) {
     out << "rgb("sv << static_cast<short>(rgb.red_) << ","sv
                     << static_cast<short>(rgb.green_) << ","sv 
                     << static_cast<short>(rgb.blue_) << ")"sv;
 }
     
-inline void print_color(std::ostream& out, Rgba& rgba) {
+inline void PrintColor(std::ostream& out, Rgba& rgba) {
     out << "rgba("sv << static_cast<short>(rgba.red_) << ","sv 
                      << static_cast<short>(rgba.green_) << ","sv 
                      << static_cast<short>(rgba.blue_) << ","sv 
                      << (rgba.opacity_) << ")"sv;
 }
     
-inline void print_color(std::ostream& out, std::monostate) {
+inline void PrintColor(std::ostream& out, std::monostate) {
     out << "none"sv;
 }
  
-inline void print_color(std::ostream& out, std::string& color) {
+inline void PrintColor(std::ostream& out, std::string& color) {
     out << color;
 }
     
 std::ostream& operator<<(std::ostream& out, const Color& color) {
-    std::visit([&out](auto value) {
-            print_color(out, value);
+    std::visit([&out](auto Value) {
+            PrintColor(out, Value);
     }, color);
     
     return out;
@@ -46,51 +46,51 @@ RenderContext::RenderContext(std::ostream& out)
         : out_(out) {
 }
     
-RenderContext RenderContext::indented() const {
+RenderContext RenderContext::Indented() const {
         return {out_, 
                 indent_step_, 
                 indent_ + indent_step_};
 }
     
-void RenderContext::render_indent() const {
+void RenderContext::RenderIndent() const {
         for (int i = 0; i < indent_; ++i) {
             out_.put(' ');
         }
 }
  
-void Object::render(const RenderContext& context) const {
-    context.render_indent();
-    render_object(context);
+void Object::Render(const RenderContext& context) const {
+    context.RenderIndent();
+    RenderObject(context);
     context.out_ << std::endl;
 }
  
-Circle& Circle::set_center(Point center)  {
+Circle& Circle::SetCenter(Point center)  {
     center_ = center;
     return *this;
 }
  
-Circle& Circle::set_radius(double radius)  {
+Circle& Circle::SetRadius(double radius)  {
     radius_ = radius;
     return *this;
 }
  
-void Circle::render_object(const RenderContext& context) const {
+void Circle::RenderObject(const RenderContext& context) const {
     std::ostream& out = context.out_;
  
     out << "<circle cx=\""sv << center_.x 
         << "\" cy=\""sv << center_.y << "\" "sv;
     out << "r=\""sv << radius_ << "\" "sv;
     
-    render_attrs(context.out_);
+    RenderAttrs(context.out_);
     out << "/>"sv;
 }
     
-Polyline& Polyline::add_point(Point point) {
+Polyline& Polyline::AddPoint(Point point) {
     points_.emplace_back(point);
     return *this;
 }
  
-void Polyline::render_object(const RenderContext& context) const {
+void Polyline::RenderObject(const RenderContext& context) const {
     
     std::ostream& out = context.out_;
     out << "<polyline points=\"";
@@ -103,41 +103,41 @@ void Polyline::render_object(const RenderContext& context) const {
         }
     }
     out << "\" "; 
-    render_attrs(context.out_);
+    RenderAttrs(context.out_);
     out << "/>";
 }
     
-Text& Text::set_position(Point pos) {
+Text& Text::SetPosition(Point pos) {
     position_ = pos;
     return *this;
 }
  
-Text& Text::set_offset(Point offset) {
+Text& Text::SetOffset(Point offset) {
     offset_ = offset;
     return *this;
 }
     
-Text& Text::set_font_size(uint32_t size) {
+Text& Text::SetFontSize(uint32_t size) {
     font_size_ = size;
     return *this;
 }
  
-Text& Text::set_font_family(std::string font_family) {
+Text& Text::SetFontFamily(std::string font_family) {
     font_family_ = std::move(font_family);
     return *this;
 }
  
-Text& Text::set_font_weight(std::string font_weight) {
+Text& Text::SetFontWeight(std::string font_weight) {
     font_weight_ = std::move(font_weight);
     return *this;
 }
  
-Text& Text::set_data(std::string data) {
+Text& Text::SetData(std::string data) {
     data_ = std::move(data);
     return *this;
 }
  
-std::string Text::delete_spaces(const std::string& str) {
+std::string Text::DeleteSpaces(const std::string& str) {
     if (str.empty()) {
         return {};
     } else {
@@ -148,7 +148,7 @@ std::string Text::delete_spaces(const std::string& str) {
     }
 }
  
-std::string Text::uniq_symbols(const std::string& str) {
+std::string Text::UniqSymbols(const std::string& str) {
     
     std::string out;
  
@@ -184,11 +184,11 @@ std::string Text::uniq_symbols(const std::string& str) {
     return out;
 }
  
-void Text::render_object(const RenderContext& context) const {
+void Text::RenderObject(const RenderContext& context) const {
     
     std::ostream& out = context.out_;
     out << "<text "; 
-    render_attrs(context.out_);
+    RenderAttrs(context.out_);
     out << "x=\"" 
         << position_.x << "\" y=\"" 
         << position_.y << "\" "
@@ -206,11 +206,11 @@ void Text::render_object(const RenderContext& context) const {
         out << "font-weight=\"" << font_weight_ << "\"";
     }
  
-    out << ">"sv << delete_spaces(uniq_symbols(data_)) << "</text>"sv;
+    out << ">"sv << DeleteSpaces(UniqSymbols(data_)) << "</text>"sv;
  
 }
  
-void Document::render(std::ostream& out) const {
+void Document::Render(std::ostream& out) const {
     int indent = 2;
     int indent_step = 2;
  
@@ -222,7 +222,7 @@ void Document::render(std::ostream& out) const {
     out << xml << "\n"sv << svg << "\n"sv;
  
     for (const auto& object : objects_) {
-        object->render(context);
+        object->Render(context);
     }
     
     out << "</svg>"sv;
