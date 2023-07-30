@@ -7,4 +7,4 @@ namespace geo {
     bool Coordinates::operator!=(const Coordinates& other) const {
         return !(*this == other);
     }
-}
+} // namespace geo
