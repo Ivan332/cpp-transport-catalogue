@@ -20,34 +20,34 @@ static const uint16_t HOUR = 60;
  
 class TransportRouter {
 public:
-    void set_routing_settings(RoutingSettings routing_settings);
-    const RoutingSettings& get_routing_settings() const;
+    void SetRoutingSettings(RoutingSettings routing_settings);
+    const RoutingSettings& GetRoutingSettings() const;
  
-    void build_router(TransportCatalogue& transport_catalogue);
+    void BuildRouter(TransportCatalogue& transport_catalogue);
  
-    const DirectedWeightedGraph<double>& get_graph() const;
-    const Router<double>& get_router() const;
-    const std::variant<StopEdge, BusEdge>& get_edge(EdgeId id) const;
+    const DirectedWeightedGraph<double>& GetGraph() const;
+    const Router<double>& GetRouter() const;
+    const std::variant<StopEdge, BusEdge>& GetEdge(EdgeId id) const;
     
-    std::optional<RouterByStop> get_router_by_stop(Stop* stop) const;
-    std::optional<RouteInfo> get_route_info(VertexId start, VertexId end) const;
+    std::optional<RouterByStop> GetRouterByStop(Stop* stop) const;
+    std::optional<RouteInfo> GetRouteInfo(VertexId start, VertexId end) const;
  
-    const std::unordered_map<Stop*, RouterByStop>& get_stop_to_vertex() const;
-    const std::unordered_map<EdgeId, std::variant<StopEdge, BusEdge>>& get_edge_id_to_edge() const;
+    const std::unordered_map<Stop*, RouterByStop>& GetStopToVertex() const;
+    const std::unordered_map<EdgeId, std::variant<StopEdge, BusEdge>>& GetEdgeIdToEdge() const;
     
-    std::deque<Stop*> get_stops_ptr(TransportCatalogue& transport_catalogue);
-    std::deque<Bus*> get_bus_ptr(TransportCatalogue& transport_catalogue);
+    std::deque<Stop*> GetStopsPtr(TransportCatalogue& transport_catalogue);
+    std::deque<Bus*> GetBusPtr(TransportCatalogue& transport_catalogue);
         
-    void add_edge_to_stop();
-    void add_edge_to_bus(TransportCatalogue& transport_catalogue);
+    void AddEdgeToStop();
+    void AddEdgeToBus(TransportCatalogue& transport_catalogue);
     
-    void set_stops(const std::deque<Stop*>& stops);
-    void set_graph(TransportCatalogue& transport_catalogue);
+    void SetStops(const std::deque<Stop*>& stops);
+    void SetGraph(TransportCatalogue& transport_catalogue);
  
-    Edge<double> make_edge_to_bus(Stop* start, Stop* end, const double distance) const;
+    Edge<double> MakeEdgeToBus(Stop* start, Stop* end, const double distance) const;
  
     template <typename Iterator>
-    void parse_bus_to_edges(Iterator first, 
+    void ParseBusToEdges(Iterator first, 
                             Iterator last,
                             const TransportCatalogue& transport_catalogue, 
                             const Bus* bus);
@@ -63,7 +63,7 @@ private:
 };
  
 template <typename Iterator>
-void TransportRouter::parse_bus_to_edges(Iterator first, 
+void TransportRouter::ParseBusToEdges(Iterator first, 
                                          Iterator last,
                                          const TransportCatalogue& transport_catalogue, 
                                          const Bus* bus) {
@@ -76,9 +76,9 @@ void TransportRouter::parse_bus_to_edges(Iterator first,
             distance += transport_catalogue.get_distance_stop(*prev(it2), *it2);
             ++span;
  
-            EdgeId id = graph_->add_edge(make_edge_to_bus(*it, *it2, distance));
+            EdgeId id = graph_->AddEdge(make_edge_to_bus(*it, *it2, distance));
             
-            edge_id_to_edge_[id] = BusEdge{bus->name, span, graph_->get_edge(id).weight};
+            edge_id_to_edge_[id] = BusEdge{bus->name, span, graph_->GetEdge(id).weight};
         }
     }
 }
