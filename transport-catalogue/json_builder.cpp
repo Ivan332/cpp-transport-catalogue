@@ -1,259 +1,210 @@
 #include "json_builder.h"
-
-#include <map>
-#include <stdexcept>
-#include <utility>
-
-using namespace std;
-
+ 
+namespace transport_catalogue {
+namespace detail {
 namespace json {
+namespace builder {
+ 
+BaseContext::BaseContext(Builder& builder) : builder_(builder) {}
+ 
+KeyContext BaseContext::key(const std::string& key) {
+    return builder_.key(key);
+}
 
-    Builder::Builder(Builder&& other)
-        : stack_(move(other.stack_)), key_stack_(move(other.key_stack_)) {
-        if (other.moved_out_of_) {
-            throw logic_error("double move"s);
-        }
-        finished_ = other.finished_;
-        expect_key_ = other.expect_key_;
-        moved_out_of_ = exchange(other.moved_out_of_, true);
+Builder& BaseContext::value(const Node::Value& value) {
+    return builder_.value(value);
+}
+ 
+DictionaryContext BaseContext::start_dict() {
+    return DictionaryContext(builder_.start_dict());
+}
+
+Builder& BaseContext::end_dict() {
+    return builder_.end_dict();
+}
+ 
+ArrayContext BaseContext::start_array() {
+    return ArrayContext(builder_.start_array());
+}
+
+Builder& BaseContext::end_array() {
+    return builder_.end_array();
+}
+ 
+KeyContext::KeyContext(Builder& builder) : BaseContext(builder) {}
+ 
+DictionaryContext KeyContext::value(const Node::Value& value) {
+    return BaseContext::value(std::move(value));
+}
+ 
+DictionaryContext::DictionaryContext(Builder& builder) : BaseContext(builder) {}
+ 
+ArrayContext::ArrayContext(Builder& builder) : BaseContext(builder) {}
+ 
+ArrayContext ArrayContext::value(const Node::Value& value) {
+    return BaseContext::value(std::move(value));
+}
+ 
+Node Builder::make_node(const Node::Value& value_) {
+    Node node;
+ 
+    if (std::holds_alternative<bool>(value_)) {
+        bool bol = std::get<bool>(value_);
+        node = Node(bol);
+ 
+    } else if (std::holds_alternative<int>(value_)) {
+        int intt = std::get<int>(value_);
+        node = Node(intt);
+ 
+    } else if (std::holds_alternative<double>(value_)) {
+        double doble = std::get<double>(value_);
+        node = Node(doble);
+ 
+    } else if (std::holds_alternative<std::string>(value_)) {
+        std::string str = std::get<std::string>(value_);
+        node = Node(std::move(str));
+ 
+    } else if (std::holds_alternative<Array>(value_)) {
+        Array arr = std::get<Array>(value_);
+        node = Node(std::move(arr));
+ 
+    } else if (std::holds_alternative<Dict>(value_)) {
+        Dict dictionary = std::get<Dict>(value_);
+        node = Node(std::move(dictionary));
+ 
+    } else {
+        node = Node();
     }
-
-    Builder& Builder::operator=(Builder&& lhs) {
-        if (&lhs == this) {
-            return *this;
+ 
+    return node;
+}
+ 
+void Builder::add_node(const Node& node) {
+    if (nodes_stack_.empty()) {
+ 
+        if (!root_.is_null()) {
+            throw std::logic_error("root has been added");
         }
-        Builder other(move(lhs));
-        Swap(other);
-        return *this;
-    }
-
-    void Builder::Swap(Builder& other) {
-        swap(stack_, other.stack_);
-        swap(key_stack_, other.key_stack_);
-        swap(finished_, other.finished_);
-        swap(expect_key_, other.expect_key_);
-        swap(moved_out_of_, other.moved_out_of_);
-    }
-
-    // Указать название ключа в собираемом JSON словаре
-    Builder& Builder::Key(string key) {
-        if (moved_out_of_) {
-            throw logic_error("using a moved-out-of builder"s);
+ 
+        root_ = node;
+        return;
+ 
+    } else {
+ 
+        if (!nodes_stack_.back()->is_array()
+            && !nodes_stack_.back()->is_string()) {
+ 
+            throw std::logic_error("unable to create node");
         }
-        if (stack_.empty()) {
-            throw logic_error("unexpected key: empty node"s);
+ 
+        if (nodes_stack_.back()->is_array()) {
+            Array arr = nodes_stack_.back()->as_array();
+            arr.emplace_back(node);
+ 
+            nodes_stack_.pop_back();
+            auto arr_ptr = std::make_unique<Node>(arr);
+            nodes_stack_.emplace_back(std::move(arr_ptr));
+ 
+            return;
         }
-        if (!stack_.back().IsMap()) {
-            throw logic_error("unexpected key: not a map"s);
-        }
-        if (!expect_key_) {
-            throw logic_error("unexpected key"s);
-        }
-        key_stack_.emplace_back(move(key));
-        expect_key_ = false;
-        return *this;
-    }
-
-    // Указать значение для примитивного JSON или значение собираемого словаря или массива
-    Builder& Builder::Value(Node::Value value) {
-        if (moved_out_of_) {
-            throw logic_error("using a moved-out-of builder"s);
-        }
-
-        // если стек пустой, значение для примитивного JSON
-        if (stack_.empty()) {
-            stack_.emplace_back(move(value));
-            finished_ = true;
-            return *this;
-        }
-
-        auto& cur_node = stack_.back();
-        if (cur_node.IsArray()) {
-            cur_node.AsArray().emplace_back(move(value));
-            return *this;
-        }
-
-        if (cur_node.IsMap() && !expect_key_) {
-            cur_node.AsMap().emplace(make_pair(move(key_stack_.back()), move(value)));
-            key_stack_.pop_back();
-            expect_key_ = true;
-            return *this;
-        }
-        throw logic_error("unexpected value"s);
-    }
-
-    // Начать построение JSON словаря
-    DictKeyPart Builder::StartDict() {
-        if (moved_out_of_) {
-            throw logic_error("using a moved-out-of builder"s);
-        }
-        if (finished_) {
-            throw logic_error("node is finished"s);
-        }
-        if (expect_key_) {
-            throw logic_error("expected key, start of dict found"s);
-        }
-        stack_.push_back(Dict{});
-        expect_key_ = true;
-        return DictKeyPart{ move(*this) };
-    }
-
-    // Закончить построение JSON словаря
-    Builder& Builder::EndDict() {
-        if (moved_out_of_) {
-            throw logic_error("using a moved-out-of builder"s);
-        }
-        if (finished_) {
-            throw logic_error("node is finished"s);
-        }
-        if (stack_.empty() || !stack_.back().IsMap()) {
-            throw logic_error("trying to end a non-dict"s);
-        }
-        if (!expect_key_) {
-            throw logic_error("expected a value, end of dict found"s);
-        }
-        expect_key_ = false;
-        auto val = move(stack_.back());
-        stack_.pop_back();
-        return Value(move(val.GetValue()));
-    }
-
-    // Начать построение JSON массива
-    ArrayPart Builder::StartArray() {
-        if (moved_out_of_) {
-            throw logic_error("using a moved-out-of builder"s);
-        }
-        if (finished_) {
-            throw logic_error("node is finished"s);
-        }
-        if (expect_key_) {
-            throw logic_error("expected key"s);
-        }
-        stack_.push_back(Array{});
-        return ArrayPart{ move(*this) };
-    }
-
-    // Закончить построение JSON массива
-    Builder& Builder::EndArray() {
-        if (moved_out_of_) {
-            throw logic_error("using a moved-out-of builder"s);
-        }
-        if (finished_) {
-            throw logic_error("node is finished"s);
-        }
-        if (stack_.empty() || !stack_.back().IsArray()) {
-            throw logic_error("trying to end a non-array"s);
-        }
-        auto val = move(stack_.back());
-        stack_.pop_back();
-        return Value(move(val.GetValue()));
-    }
-
-    // Закончить сборку JSON значения, возвращает готовую JSON ноду
-    Node Builder::Build() {
-        if (moved_out_of_) {
-            throw logic_error("using a moved-out-of builder"s);
-        }
-        if (stack_.empty()) {
-            throw logic_error("builder is empty");
-        }
-        if (!finished_) {
-            if (stack_.back().IsMap()) {
-                throw logic_error("node is not finished: dict is not ended"s);
+ 
+        if (nodes_stack_.back()->is_string()) {
+            std::string str = nodes_stack_.back()->as_string();
+            nodes_stack_.pop_back();
+ 
+            if (nodes_stack_.back()->is_dict()) {
+                Dict dictionary = nodes_stack_.back()->as_dict();
+                dictionary.emplace(std::move(str), node);
+ 
+                nodes_stack_.pop_back();
+                auto dictionary_ptr = std::make_unique<Node>(dictionary);
+                nodes_stack_.emplace_back(std::move(dictionary_ptr));
             }
-            else if (stack_.back().IsArray()) {
-                throw logic_error("node is not finished: array is not ended"s);
-            }
-            throw logic_error("node is not finished"s);
+ 
+            return;
         }
-        auto val = move(stack_.back());
-        stack_.pop_back();
-        return val;
     }
-
-    // Указать название ключа в собираемом JSON словаре
-    Builder& PartBuilder::Key(std::string string_) {
-        return builder_.Key(std::move(string_));
+}
+ 
+KeyContext Builder::key(const std::string& key_) {
+    if (nodes_stack_.empty()) {
+        throw std::logic_error("unable to create key");
     }
-
-    // Указать значение для примитивного JSON или значение собираемого словаря или массива
-    Builder& PartBuilder::Value(Node::Value value_) {
-        return builder_.Value(value_);
+ 
+    auto key_ptr = std::make_unique<Node>(key_);
+ 
+    if (nodes_stack_.back()->is_dict()) {
+        nodes_stack_.emplace_back(std::move(key_ptr));
     }
-
-    // Начать построение JSON словаря
-    DictKeyPart PartBuilder::StartDict() {
-        return builder_.StartDict();
+ 
+    return KeyContext(*this);
+}
+ 
+Builder& Builder::value(const Node::Value& value_) {
+    add_node(make_node(value_));
+ 
+    return *this;
+}
+ 
+DictionaryContext Builder::start_dict() {
+    nodes_stack_.emplace_back(std::move(std::make_unique<Node>(Dict())));
+ 
+    return DictionaryContext(*this);
+}
+ 
+Builder& Builder::end_dict() {
+    if (nodes_stack_.empty()) {
+        throw std::logic_error("unable to close as without opening");
     }
-
-    // Закончить построение JSON словаря
-    Builder& PartBuilder::EndDict() {
-        return builder_.EndDict();
+ 
+    Node node = *nodes_stack_.back();
+ 
+    if (!node.is_dict()) {
+        throw std::logic_error("object isn't dictionary");
     }
-
-    // Начать построение JSON массива
-    ArrayPart PartBuilder::StartArray() {
-        return builder_.StartArray();
+ 
+    nodes_stack_.pop_back();
+    add_node(node);
+ 
+    return *this;
+}
+ 
+ArrayContext Builder::start_array() {
+    nodes_stack_.emplace_back(std::move(std::make_unique<Node>(Array())));
+ 
+    return ArrayContext(*this);
+}
+ 
+Builder& Builder::end_array() {
+    if (nodes_stack_.empty()) {
+        throw std::logic_error("unable to close without opening");
     }
-
-    // Закончить построение JSON массива
-    Builder& PartBuilder::EndArray() {
-        return builder_.EndArray();
+ 
+    Node node = *nodes_stack_.back();
+ 
+    if (!node.is_array()) {
+        throw std::logic_error("object isn't array");
     }
-
-    // Закончить сборку JSON значения, возвращает готовую JSON ноду
-    Node PartBuilder::Build() {
-        return builder_.Build();
+ 
+    nodes_stack_.pop_back();
+    add_node(node);
+ 
+    return *this;
+}
+ 
+Node Builder::build() {
+    if (root_.is_null()) {
+        throw std::logic_error("empty json");
     }
-
-    // Начать построение JSON словаря
-    DictKeyPart DictValuePart::StartDict() { 
-        return builder_.StartDict(); 
+ 
+    if (!nodes_stack_.empty()) {
+        throw std::logic_error("invalid json");
     }
-
-    // Указать название ключа в собираемом JSON словаре
-    DictValuePart DictKeyPart::Key(std::string k) {
-        builder_.Key(move(k));
-        return DictValuePart{ move(builder_) };
-    }
-
-    // Указать значение в собираемом JSON словаре
-    DictKeyPart DictValuePart::Value(Node::Value value) {
-        builder_.Value(move(value));
-        return DictKeyPart{ move(builder_) };
-    }
-
-    // Закончить построение JSON словаря
-    Builder DictKeyPart::EndDict() {
-        builder_.EndDict();
-        return move(builder_);
-    }
-
-    // Начать построение JSON массива
-    ArrayPart DictValuePart::StartArray() { 
-        return builder_.StartArray(); 
-    }
-
-    // Указать значение в собираемом JSON массиве
-    ArrayPart& ArrayPart::Value(Node::Value value) {
-        builder_.Value(move(value));
-        return *this;
-    }
-
-    // Начать построение JSON словаря
-    DictKeyPart ArrayPart::StartDict() { 
-        return builder_.StartDict(); 
-    }
-
-    // Начать построение JSON массива
-    ArrayPart ArrayPart::StartArray() { 
-        return builder_.StartArray(); 
-    }
-
-    // Закончить построение JSON массива
-    Builder ArrayPart::EndArray() {
-        builder_.EndArray();
-        return move(builder_);
-    }
-
-}  // namespace json
+ 
+    return root_;
+}
+ 
+} // namespace builder
+} // namespace json
+} // namespace detail
+} // namespace transport_catalogue
