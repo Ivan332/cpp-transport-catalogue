@@ -1,59 +1,85 @@
 #pragma once
-
-#include <stddef.h>
-
-#include <set>
-#include <string>
-#include <string_view>
+ 
+#include <algorithm>
 #include <vector>
-#include <unordered_set>
-
+#include <string>
+#include <variant>
+ 
 #include "geo.h"
-
-namespace transport_catalogue {
-
-	enum RouteType {
-		LINEAR,
-		CIRCULAR,
-	};
-
-	struct Stop {
-		std::string name;
-		geo::Coordinates coords;
-	};
-
-	/**
-	 * Маршрут.
-	 * Бывает линейным, тогда он идёт так:
-	 * `S[0] -> S[1] -> ... -> S[n-2] -> S[n-1] -> S[n-2] -> ... -> S[1] -> S[0]`
-	 * где `S` это вектор `stops`.
-	 *
-	 * А также бывает кольцевым, тогда он идёт так:
-	 * `S[0] -> S[1] -> ... -> S[n-2] -> S[n-1] -> S[0]`
-	 */
-	struct Bus {
-		std::string name;
-		RouteType route_type = RouteType::LINEAR;
-		// указатель смотрит на элемент `deque` в транспортном справочнике
-		std::vector<const Stop*> stops;
-	};
-
-	// Тип: константный указатель на запись об остановке в БД остановок
-	using StopPtr = const Stop*;
-	// Тип: константный указатель на запись о маршруте в БД маршрутов
-	using BusPtr = const Bus*;
-
-	// Информация о маршруте
-	struct BusStats {
-		// сколько остановок в маршруте, включая первую
-		size_t stops_count = 0;
-		size_t unique_stops_count = 0;
-		// длина маршрута в метрах
-		double route_length = 0;
-		double crow_route_length = 0;
-	};
-
-	// Информация об остановке: отсортированная коллекция уникальных марштуров, которые проходят через остановку
-	using BusesForStop = std::unordered_set<std::string_view>;
-
-}  // namespace transport_catalogue
+#include "graph.h"
+ 
+namespace domain {
+ 
+struct StatRequest { 
+    int id;
+    std::string type;
+    std::string name;    
+    std::string from;
+    std::string to;
+};
+    
+struct Bus;
+    
+struct Stop {     
+    std::string name;
+    double latitude;
+    double longitude;
+    
+    std::vector<Bus*> buses;
+};
+ 
+struct Bus {     
+    std::string name;
+    std::vector<Stop*> stops;
+    bool is_roundtrip;
+    size_t route_length;
+};
+ 
+struct Distance {    
+    const Stop* start;
+    const Stop* end;
+    int distance;
+};  
+ 
+struct BusQueryResult {
+    std::string_view name;
+    bool not_found;
+    int stops_on_route;
+    int unique_stops;
+    int route_length;
+    double curvature;
+};    
+   
+struct StopQueryResult {
+    std::string_view name;
+    bool not_found;
+    std::vector<std::string> buses_name;
+};
+    
+struct StopEdge {
+    std::string_view name;
+    double time = 0;
+};
+ 
+struct BusEdge {
+    std::string_view bus_name;
+    size_t span_count = 0;
+    double time = 0;
+};
+ 
+struct RoutingSettings {
+    double bus_wait_time = 0;
+    double bus_velocity = 0;
+};
+ 
+struct RouterByStop {
+    graph::VertexId bus_wait_start;
+    graph::VertexId bus_wait_end;
+};
+ 
+struct RouteInfo {
+    double total_time = 0.;
+    std::vector<std::variant<StopEdge, BusEdge>> edges;
+};
+ 
+} // namespace domain
